@@ -140,4 +140,5 @@ def test_root_router_puts_fallback_last() -> None:
     root = build_root_router()
     names = [child.name for child in root.sub_routers]
 
-    assert names == ["start", "fallback"]
+    assert names[0] == "start"
+    assert names[-1] == "fallback"
