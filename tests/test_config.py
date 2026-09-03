@@ -33,13 +33,16 @@ from app.config import (
 # --------------------------------------------------------------------------------------
 
 
-def test_build_config_full_env() -> None:
+def test_build_config_full_env(tmp_path: Path) -> None:
     """Все переменные заданы корректно — получаем заполненный Config."""
+    # Абсолютный путь берём через tmp_path, а не пишем строкой в стиле Unix:
+    # на Windows "/var/lib/bot/bot.db" без буквы диска абсолютным не считается.
+    absolute_db_path = tmp_path / "bot.db"
     config = build_config(
         {
             "BOT_TOKEN": "123456:AAHfake-token",
             "LOG_LEVEL": "DEBUG",
-            "DB_PATH": "/var/lib/bot/bot.db",
+            "DB_PATH": str(absolute_db_path),
             "TZ": "Europe/Berlin",
             "ALLOWED_USER_IDS": "111, 222",
         }
@@ -48,7 +51,7 @@ def test_build_config_full_env() -> None:
     assert isinstance(config, Config)
     assert config.bot_token == "123456:AAHfake-token"
     assert config.log_level == "DEBUG"
-    assert config.db_path == Path("/var/lib/bot/bot.db")
+    assert config.db_path == absolute_db_path
     assert config.timezone.key == "Europe/Berlin"
     assert config.allowed_user_ids == (111, 222)
 
