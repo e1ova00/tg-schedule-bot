@@ -3,6 +3,8 @@ aiosqlite==0.20.0
 APScheduler==3.10.4
 # aiogram 3.15.0 требует aiohttp<3.11, поэтому здесь 3.10.11, а не 3.11.11
 aiohttp==3.10.11
+# Нужен, чтобы aiogram умел ходить через SOCKS-прокси (TELEGRAM_PROXY_URL в .env)
+aiohttp-socks==0.9.1
 python-dotenv==1.0.1
 pytest==8.3.4
 pytest-asyncio==0.25.0

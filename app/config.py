@@ -21,6 +21,7 @@ DEFAULT_DB_PATH = "data/bot.db"
 DEFAULT_LOG_LEVEL = "INFO"
 
 _KNOWN_LOG_LEVELS = ("CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG")
+_KNOWN_PROXY_SCHEMES = ("socks4://", "socks5://", "http://", "https://")
 
 # Корень проекта: app/config.py -> app -> tg-schedule-bot
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -39,6 +40,7 @@ class Config:
     db_path: Path
     timezone: ZoneInfo
     allowed_user_ids: tuple[int, ...]
+    proxy_url: str | None
 
 
 def parse_user_ids(raw: str | None) -> tuple[int, ...]:
@@ -90,6 +92,23 @@ def parse_timezone(raw: str | None) -> ZoneInfo:
         return ZoneInfo(DEFAULT_TIMEZONE)
 
 
+def parse_proxy_url(raw: str | None) -> str | None:
+    """Адрес прокси для соединения с Telegram. Пусто — прокси не используем.
+
+    Нужен людям, у кого Telegram открывается только через прокси/VPN — тот же адрес,
+    что настроен в системе для обычного Telegram, обычно подходит и здесь.
+    """
+    value = (raw or "").strip()
+    if not value:
+        return None
+    if not value.lower().startswith(_KNOWN_PROXY_SCHEMES):
+        raise ConfigError(
+            f"Не понимаю адрес прокси «{raw}». Начните его с socks5://, socks4://, "
+            "http:// или https://, например socks5://127.0.0.1:10808."
+        )
+    return value
+
+
 def parse_db_path(raw: str | None, project_root: Path = PROJECT_ROOT) -> Path:
     """Путь к файлу SQLite. Относительный путь считается от корня проекта."""
     value = (raw or "").strip() or DEFAULT_DB_PATH
@@ -111,6 +130,7 @@ def build_config(env: Mapping[str, str]) -> Config:
         db_path=parse_db_path(env.get("DB_PATH")),
         timezone=parse_timezone(env.get("TZ")),
         allowed_user_ids=parse_user_ids(env.get("ALLOWED_USER_IDS")),
+        proxy_url=parse_proxy_url(env.get("TELEGRAM_PROXY_URL")),
     )
 
 

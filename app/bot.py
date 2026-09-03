@@ -6,6 +6,7 @@ import logging
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
+from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.enums import ParseMode
 
 from app.config import Config
@@ -15,8 +16,11 @@ logger = logging.getLogger(__name__)
 
 
 def create_bot(config: Config) -> Bot:
+    # Без TELEGRAM_PROXY_URL сессия обычная: большинству прокси для Telegram не нужен.
+    session = AiohttpSession(proxy=config.proxy_url) if config.proxy_url else None
     return Bot(
         token=config.bot_token,
+        session=session,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
 

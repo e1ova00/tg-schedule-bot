@@ -24,6 +24,7 @@ from app.config import (
     load_config,
     parse_db_path,
     parse_log_level,
+    parse_proxy_url,
     parse_timezone,
     parse_user_ids,
 )
@@ -45,6 +46,7 @@ def test_build_config_full_env(tmp_path: Path) -> None:
             "DB_PATH": str(absolute_db_path),
             "TZ": "Europe/Berlin",
             "ALLOWED_USER_IDS": "111, 222",
+            "TELEGRAM_PROXY_URL": "socks5://127.0.0.1:10808",
         }
     )
 
@@ -54,6 +56,7 @@ def test_build_config_full_env(tmp_path: Path) -> None:
     assert config.db_path == absolute_db_path
     assert config.timezone.key == "Europe/Berlin"
     assert config.allowed_user_ids == (111, 222)
+    assert config.proxy_url == "socks5://127.0.0.1:10808"
 
 
 def test_build_config_defaults_when_only_token_given() -> None:
@@ -63,6 +66,7 @@ def test_build_config_defaults_when_only_token_given() -> None:
     assert config.log_level == DEFAULT_LOG_LEVEL == "INFO"
     assert config.timezone.key == DEFAULT_TIMEZONE == "Europe/Moscow"
     assert config.db_path == PROJECT_ROOT / DEFAULT_DB_PATH
+    assert config.proxy_url is None
     assert config.allowed_user_ids == ()
 
 
@@ -288,6 +292,46 @@ def test_parse_db_path_does_not_create_anything(tmp_path: Path) -> None:
     """Разбор пути — чистая функция: файлов и папок она создавать не должна."""
     parse_db_path("data/bot.db", project_root=tmp_path)
     assert list(tmp_path.iterdir()) == []
+
+
+# --------------------------------------------------------------------------------------
+# parse_proxy_url
+# --------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        pytest.param(None, id="переменной нет"),
+        pytest.param("", id="пустая строка"),
+        pytest.param("   ", id="одни пробелы"),
+    ],
+)
+def test_parse_proxy_url_empty_means_no_proxy(raw: str | None) -> None:
+    assert parse_proxy_url(raw) is None
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "socks5://127.0.0.1:10808",
+        "socks4://127.0.0.1:1080",
+        "http://127.0.0.1:8080",
+        "https://proxy.example.com:443",
+    ],
+)
+def test_parse_proxy_url_accepts_known_schemes(raw: str) -> None:
+    assert parse_proxy_url(raw) == raw
+
+
+def test_parse_proxy_url_trims_spaces() -> None:
+    assert parse_proxy_url("  socks5://127.0.0.1:10808  ") == "socks5://127.0.0.1:10808"
+
+
+def test_parse_proxy_url_rejects_unknown_scheme() -> None:
+    """Опечатка в адресе прокси не должна приводить к непонятной сетевой ошибке позже."""
+    with pytest.raises(ConfigError, match="ftp://nope"):
+        parse_proxy_url("ftp://nope")
 
 
 # --------------------------------------------------------------------------------------
