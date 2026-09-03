@@ -4,3 +4,5 @@ __pycache__/
 *.pyc
 data/bot.db
 *.log
+logs/
+.pytest_cache/
