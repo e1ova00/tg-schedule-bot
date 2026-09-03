@@ -49,8 +49,9 @@ def main() -> int:
 def _explain(error: Exception) -> str:
     """Переводит частые сбои на человеческий язык."""
     from aiogram.exceptions import TelegramNetworkError, TelegramUnauthorizedError
+    from aiogram.utils.token import TokenValidationError
 
-    if isinstance(error, TelegramUnauthorizedError):
+    if isinstance(error, (TelegramUnauthorizedError, TokenValidationError)):
         return (
             "Telegram не принял BOT_TOKEN. Проверьте, что в .env вписан свежий токен "
             "от @BotFather целиком, без пробелов и кавычек."
