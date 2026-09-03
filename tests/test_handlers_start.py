@@ -16,7 +16,6 @@ from aiogram.filters import Command, CommandStart
 from aiogram.types import Chat, Message, User
 
 from app import texts
-from app.handlers import build_root_router
 from app.handlers.fallback import handle_unknown_command
 from app.handlers.start import handle_help, handle_start
 
@@ -135,10 +134,13 @@ def test_fallback_filter_reacts_only_to_commands(text: str, expected: bool) -> N
     assert bool(F.text.startswith("/").resolve(make_message(text))) is expected
 
 
-def test_root_router_puts_fallback_last() -> None:
-    """Fallback ловит остаток команд, поэтому он обязан идти после /start и /help."""
-    root = build_root_router()
-    names = [child.name for child in root.sub_routers]
+def test_root_router_puts_fallback_last(root_router: Router) -> None:
+    """Fallback ловит остаток команд, поэтому он обязан идти после /start и /help.
+
+    Роутер берётся из общей фикстуры: `build_root_router()` можно вызвать за прогон
+    только один раз (см. tests/conftest.py).
+    """
+    names = [child.name for child in root_router.sub_routers]
 
     assert names[0] == "start"
     assert names[-1] == "fallback"
