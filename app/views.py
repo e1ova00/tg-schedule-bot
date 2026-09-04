@@ -7,7 +7,13 @@
 
 from __future__ import annotations
 
+from datetime import date
+from html import escape
+
 from app import texts, users
+from app.buildings import building_title
+from app.routing.base import TravelTime
+from app.schedule import Lesson
 
 
 def minutes_word(count: int) -> str:
@@ -59,11 +65,56 @@ def format_settings(user: users.User | None) -> str:
     )
 
 
+def transport_way(mode: str | None) -> str:
+    """«на машине» / «на общественном транспорте» — для фразы «Ехать ...»."""
+    return texts.TRANSPORT_WAY.get(mode or "", texts.VALUE_MISSING)
+
+
+def travel_note(travel: TravelTime) -> str:
+    """Оговорка про качество оценки: настоящие пробки, оценка без них или прикидка по прямой."""
+    if travel.is_rough:
+        return texts.ROUTE_NOTE_ROUGH
+    return texts.ROUTE_NOTE_TRAFFIC if travel.traffic_aware else texts.ROUTE_NOTE_NO_TRAFFIC
+
+
+def format_route(
+    day: date,
+    lesson: Lesson,
+    travel: TravelTime,
+    transport_mode: str | None,
+    today: date,
+) -> str:
+    """Ответ на /route: куда, когда, сколько ехать и насколько этому числу можно верить."""
+    when = texts.DAY_PREFIXES.get((day - today).days, "").lower() or f"{day.day}-го"
+
+    return "\n\n".join(
+        (
+            texts.ROUTE_TITLE.format(building=escape(building_title(lesson.building))),
+            texts.ROUTE_LESSON.format(
+                when=when,
+                time=lesson.start_text,
+                subject=escape(lesson.subject),
+                kind=escape(lesson.kind),
+                room=escape(lesson.room),
+            ),
+            texts.ROUTE_TRAVEL.format(
+                transport=transport_way(transport_mode),
+                minutes=format_minutes(travel.minutes),
+            )
+            + " "
+            + travel_note(travel),
+        )
+    )
+
+
 __all__ = [
     "format_minutes",
+    "format_route",
     "format_settings",
     "location_title",
     "minutes_word",
     "transport_phrase",
     "transport_title",
+    "transport_way",
+    "travel_note",
 ]

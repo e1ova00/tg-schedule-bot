@@ -10,11 +10,12 @@ from __future__ import annotations
 import json
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import date, time, timedelta
+from datetime import date, datetime, time, timedelta
 from html import escape
 from pathlib import Path
 
 from app import texts
+from app.clock import MOSCOW
 from app.config import PROJECT_ROOT
 
 # Расписание лежит рядом с кодом и правится только скриптом парсера, не руками.
@@ -221,6 +222,40 @@ def first_offline_lesson(d: date, lessons: Sequence[Lesson] | None = None) -> Le
     return None
 
 
+def upcoming_offline_lesson(
+    moment: datetime,
+    *,
+    days: int = 2,
+    lessons: Sequence[Lesson] | None = None,
+) -> tuple[date, Lesson] | None:
+    """Ближайшая очная пара, до которой ещё надо доехать, и её дата.
+
+    `moment` — «сейчас» с часовым поясом (`app.clock.now()`). Пары сегодняшнего дня,
+    которые уже начались, пропускаем: ехать на них поздно, а следующая очная пара может
+    быть и позже в тот же день. Дальше смотрим ещё `days - 1` дней вперёд.
+
+    None означает «в ближайшие дни ехать некуда»: пустые дни и полный дистант у группы —
+    норма, а не ошибка.
+    """
+    if moment.tzinfo is None or moment.utcoffset() is None:
+        raise ValueError("upcoming_offline_lesson ждёт время с часовым поясом (app.clock.now()).")
+
+    # Расписание живёт по Москве, поэтому «сегодня» считаем именно там.
+    local = moment.astimezone(MOSCOW)
+    start_date = local.date()
+    current_time = local.time()
+
+    for offset in range(max(days, 1)):
+        day = start_date + timedelta(days=offset)
+        for lesson in lessons_on(day, lessons):
+            if lesson.is_remote:
+                continue
+            if offset == 0 and lesson.start <= current_time:
+                continue
+            return day, lesson
+    return None
+
+
 def has_offline_lessons(d: date, lessons: Sequence[Lesson] | None = None) -> bool:
     """Есть ли в этот день хотя бы одна очная пара (пригодится будильнику на этапе 5)."""
     return first_offline_lesson(d, lessons) is not None
@@ -300,5 +335,6 @@ __all__ = [
     "load_lessons",
     "parity_word",
     "parse_schedule",
+    "upcoming_offline_lesson",
     "week_parity",
 ]

@@ -16,7 +16,8 @@ from app.buildings import seed_buildings
 from app.config import Config
 from app.db import open_database
 from app.handlers import build_root_router
-from app.middlewares import AccessMiddleware, DatabaseMiddleware
+from app.middlewares import AccessMiddleware, DatabaseMiddleware, RouterMiddleware
+from app.routing import Router, create_router
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,7 @@ logger = logging.getLogger(__name__)
 BOT_COMMANDS: tuple[BotCommand, ...] = (
     BotCommand(command="today", description="Пары на сегодня"),
     BotCommand(command="tomorrow", description="Пары на завтра"),
+    BotCommand(command="route", description="Сколько ехать до корпуса"),
     BotCommand(command="settings", description="Посмотреть и поменять настройки"),
     BotCommand(command="help", description="Что я умею"),
     BotCommand(command="start", description="Поздороваться / начать знакомство"),
@@ -43,17 +45,24 @@ def create_bot(config: Config) -> Bot:
 
 
 def create_dispatcher(
-    config: Config, db: aiosqlite.Connection | None = None
+    config: Config,
+    db: aiosqlite.Connection | None = None,
+    travel_router: Router | None = None,
 ) -> Dispatcher:
-    """Диспетчер с памятью для диалогов и двумя middleware на уровне Update.
+    """Диспетчер с памятью для диалогов и тремя middleware на уровне Update.
 
     Порядок middleware: сначала проверка доступа (чужим даже базу открывать незачем),
-    потом выдача соединения с SQLite хендлерам.
+    потом соединение с SQLite, потом маршрутизатор. Маршрутизатор создаётся один раз:
+    внутри у него живёт HTTP-сессия. Если его не передали — берём по конфигу; сеть при
+    этом не трогается, так что для тестов это безопасно.
     """
     dispatcher = Dispatcher(storage=MemoryStorage())
     dispatcher.update.outer_middleware(AccessMiddleware(config.allowed_user_ids))
     if db is not None:
         dispatcher.update.outer_middleware(DatabaseMiddleware(db))
+    dispatcher.update.outer_middleware(
+        RouterMiddleware(travel_router if travel_router is not None else create_router(config))
+    )
     dispatcher.include_router(build_root_router())
     return dispatcher
 
@@ -64,6 +73,8 @@ async def run_bot(config: Config) -> None:
     db = await open_database(config.db_path)
     # Координаты корпусов кладём в базу один раз: дальше их берёт расчёт маршрута.
     await seed_buildings(db)
+    # Маршрутизатор один на весь процесс. Без ключа это заглушка — бот всё равно работает.
+    travel_router = create_router(config)
 
     if config.allowed_user_ids:
         logger.info("Доступ к боту открыт для %d пользователей", len(config.allowed_user_ids))
@@ -73,7 +84,7 @@ async def run_bot(config: Config) -> None:
             "Впишите свой Telegram ID в .env, когда закончите настройку."
         )
 
-    dispatcher = create_dispatcher(config, db)
+    dispatcher = create_dispatcher(config, db, travel_router)
 
     try:
         me = await bot.get_me()
@@ -89,6 +100,7 @@ async def run_bot(config: Config) -> None:
 
         await dispatcher.start_polling(bot, handle_signals=True)
     finally:
+        await travel_router.close()
         await db.close()
         await bot.session.close()
         logger.info("Бот остановлен")

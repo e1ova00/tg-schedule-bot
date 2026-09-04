@@ -20,6 +20,16 @@ DEFAULT_TIMEZONE = "Europe/Moscow"
 DEFAULT_DB_PATH = "data/bot.db"
 DEFAULT_LOG_LEVEL = "INFO"
 
+# Маршрутизаторы. 2ГИС — основной (умеет пробки), OpenRouteService — запасной.
+ROUTER_DGIS = "dgis"
+ROUTER_ORS = "ors"
+KNOWN_ROUTERS = (ROUTER_DGIS, ROUTER_ORS)
+DEFAULT_ROUTER = ROUTER_DGIS
+
+# Во сколько раз дорога дольше в час пик. Нужен только запасному маршрутизатору:
+# пробок он не знает, поэтому «утренний час» закладывается коэффициентом.
+DEFAULT_ORS_PEAK_HOUR_FACTOR = 1.4
+
 _KNOWN_LOG_LEVELS = ("CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG")
 _KNOWN_PROXY_SCHEMES = ("socks4://", "socks5://", "http://", "https://")
 
@@ -41,6 +51,12 @@ class Config:
     timezone: ZoneInfo
     allowed_user_ids: tuple[int, ...]
     proxy_url: str | None
+    # Маршруты. Ключей может не быть вовсе — тогда бот считает дорогу грубо, по прямой,
+    # и честно предупреждает об этом в ответе. Падать из-за пустого ключа он не должен.
+    router: str = DEFAULT_ROUTER
+    dgis_api_key: str | None = None
+    ors_api_key: str | None = None
+    ors_peak_hour_factor: float = DEFAULT_ORS_PEAK_HOUR_FACTOR
 
 
 def parse_user_ids(raw: str | None) -> tuple[int, ...]:
@@ -109,6 +125,50 @@ def parse_proxy_url(raw: str | None) -> str | None:
     return value
 
 
+def parse_router(raw: str | None) -> str:
+    """Какой сервис маршрутов использовать: «dgis» или «ors». Пусто — 2ГИС."""
+    value = (raw or "").strip().lower()
+    if not value:
+        return DEFAULT_ROUTER
+    if value not in KNOWN_ROUTERS:
+        raise ConfigError(
+            f"Непонятное значение ROUTER=«{raw}». Допустимо только "
+            + " или ".join(KNOWN_ROUTERS)
+            + ": dgis — 2ГИС (умеет пробки), ors — OpenRouteService (запасной, без пробок)."
+        )
+    return value
+
+
+def parse_api_key(raw: str | None) -> str | None:
+    """Ключ внешнего сервиса. Пустая строка и пробелы — это «ключа нет», а не ошибка."""
+    value = (raw or "").strip()
+    return value or None
+
+
+def parse_peak_hour_factor(raw: str | None) -> float:
+    """Коэффициент часа пик для запасного маршрутизатора.
+
+    Меньше или ровно 1.0 не имеет смысла: в час пик дорога не бывает быстрее обычной,
+    а «1.0» просто молча отключил бы поправку и незаметно сдвинул будильник.
+    """
+    value = (raw or "").strip().replace(",", ".")
+    if not value:
+        return DEFAULT_ORS_PEAK_HOUR_FACTOR
+    try:
+        factor = float(value)
+    except ValueError as exc:
+        raise ConfigError(
+            f"ORS_PEAK_HOUR_FACTOR=«{raw}» — это не число. Впишите, во сколько раз дорога "
+            f"дольше в час пик, например {DEFAULT_ORS_PEAK_HOUR_FACTOR}."
+        ) from exc
+    if factor <= 1.0:
+        raise ConfigError(
+            f"ORS_PEAK_HOUR_FACTOR=«{raw}» должен быть больше 1.0: в час пик дорога дольше, "
+            f"а не короче. Обычное значение — {DEFAULT_ORS_PEAK_HOUR_FACTOR}."
+        )
+    return factor
+
+
 def parse_db_path(raw: str | None, project_root: Path = PROJECT_ROOT) -> Path:
     """Путь к файлу SQLite. Относительный путь считается от корня проекта."""
     value = (raw or "").strip() or DEFAULT_DB_PATH
@@ -131,6 +191,10 @@ def build_config(env: Mapping[str, str]) -> Config:
         timezone=parse_timezone(env.get("TZ")),
         allowed_user_ids=parse_user_ids(env.get("ALLOWED_USER_IDS")),
         proxy_url=parse_proxy_url(env.get("TELEGRAM_PROXY_URL")),
+        router=parse_router(env.get("ROUTER")),
+        dgis_api_key=parse_api_key(env.get("DGIS_API_KEY")),
+        ors_api_key=parse_api_key(env.get("ORS_API_KEY")),
+        ors_peak_hour_factor=parse_peak_hour_factor(env.get("ORS_PEAK_HOUR_FACTOR")),
     )
 
 

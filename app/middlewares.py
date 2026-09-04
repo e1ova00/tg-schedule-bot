@@ -16,6 +16,7 @@ from aiogram.exceptions import TelegramAPIError
 from aiogram.types import TelegramObject, Update, User
 
 from app import texts
+from app.routing.base import Router
 
 logger = logging.getLogger(__name__)
 
@@ -89,4 +90,22 @@ class DatabaseMiddleware(BaseMiddleware):
         return await handler(event, data)
 
 
-__all__ = ["AccessMiddleware", "DatabaseMiddleware"]
+class RouterMiddleware(BaseMiddleware):
+    """Кладёт маршрутизатор в data под ключом `travel_router`.
+
+    Ключ намеренно не «router»: у aiogram есть свой Router, и путаница в именах
+    дорого обходится. Объект создаётся один раз при старте бота — внутри он держит
+    HTTP-сессию, открывать её на каждый запрос было бы расточительно.
+    """
+
+    def __init__(self, travel_router: Router) -> None:
+        self._router = travel_router
+
+    async def __call__(
+        self, handler: Handler, event: TelegramObject, data: dict[str, Any]
+    ) -> Any:
+        data["travel_router"] = self._router
+        return await handler(event, data)
+
+
+__all__ = ["AccessMiddleware", "DatabaseMiddleware", "RouterMiddleware"]
