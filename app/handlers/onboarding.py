@@ -89,7 +89,10 @@ async def ask_step(message: Message, state: FSMContext, step: str) -> None:
     await state.set_state(_STATE_BY_STEP[step])
 
     prompt = _PROMPTS[step][1 if single else 0]
-    await message.answer(prompt, reply_markup=_MARKUPS[step]())
+    # Кнопка «Оставить как есть» нужна только при правке одной настройки: при первом
+    # знакомстве отменить весь диалог можно командой /cancel, а обрывать один вопрос
+    # кнопкой некуда — дальше всё равно идти некуда без ответа.
+    await message.answer(prompt, reply_markup=_MARKUPS[step](with_cancel=single))
 
 
 async def start_onboarding(message: Message, state: FSMContext) -> None:
@@ -144,19 +147,60 @@ async def _complete_onboarding(
     )
 
 
-# --- /cancel ------------------------------------------------------------------------
+# --- /cancel и «Оставить как есть» ---------------------------------------------------
+
+
+async def _abort_step(
+    message: Message, state: FSMContext, db: aiosqlite.Connection, telegram_id: int
+) -> None:
+    """Прерывает текущий шаг.
+
+    При правке одной настройки (/settings) это не «отмена» в духе всего диалога, а просто
+    «передумал» — возвращаемся к карточке настроек без изменений. При первом знакомстве
+    ведём себя как раньше: сохранённые ответы остаются, продолжить можно через /start.
+    """
+    data = await state.get_data()
+    mode = data.get(MODE_KEY)
+    await state.clear()
+    if mode == MODE_SETTINGS:
+        await message.answer(texts.SETTINGS_EDIT_CANCELLED, reply_markup=keyboards.remove_keyboard())
+        await common.send_settings(message, db, telegram_id)
+    else:
+        await message.answer(
+            texts.ONBOARDING_CANCELLED, reply_markup=keyboards.remove_keyboard()
+        )
 
 
 @router.message(Command("cancel"))
-async def handle_cancel(message: Message, state: FSMContext) -> None:
+async def handle_cancel(
+    message: Message, state: FSMContext, db: aiosqlite.Connection
+) -> None:
     """Прерывает диалог на любом шаге. Уже сохранённые ответы остаются в базе."""
     if await state.get_state() is None:
         await message.answer(texts.NOTHING_TO_CANCEL)
         return
-    await state.clear()
-    await message.answer(
-        texts.ONBOARDING_CANCELLED, reply_markup=keyboards.remove_keyboard()
-    )
+    user_id = message.from_user.id if message.from_user else None
+    if user_id is None:
+        await state.clear()
+        await message.answer(
+            texts.ONBOARDING_CANCELLED, reply_markup=keyboards.remove_keyboard()
+        )
+        return
+    await _abort_step(message, state, db, user_id)
+
+
+@router.callback_query(F.data == keyboards.CB_SETTINGS_CANCEL)
+async def handle_settings_edit_cancel(
+    callback: CallbackQuery, state: FSMContext, db: aiosqlite.Connection
+) -> None:
+    """Кнопка «Оставить как есть» под инлайн-клавиатурой правки настройки."""
+    message = common.callback_message(callback)
+    if message is None or await state.get_state() is None:
+        await callback.answer()
+        return
+    await callback.answer()
+    await common.hide_inline_keyboard(callback)
+    await _abort_step(message, state, db, callback.from_user.id)
 
 
 # --- Шаг 1: геопозиция --------------------------------------------------------------
@@ -176,6 +220,24 @@ async def handle_location(
         texts.ONBOARDING_LOCATION_SAVED, reply_markup=keyboards.remove_keyboard()
     )
     await _finish_step(message, state, db, user_id, keyboards.STEP_LOCATION)
+
+
+@router.message(Onboarding.location, F.text == texts.BTN_CANCEL_EDIT)
+async def handle_location_cancel(
+    message: Message, state: FSMContext, db: aiosqlite.Connection
+) -> None:
+    """Кнопка «Оставить как есть» — есть только при правке через /settings."""
+    data = await state.get_data()
+    if data.get(MODE_KEY) != MODE_SETTINGS:
+        # На первом знакомстве без геопозиции считать дорогу не от чего, кнопки тут нет —
+        # если текст всё же пришёл (например, старая клавиатура), это просто «не то».
+        await handle_location_retry(message)
+        return
+    user_id = message.from_user.id if message.from_user else None
+    if user_id is None:
+        await state.clear()
+        return
+    await _abort_step(message, state, db, user_id)
 
 
 @router.message(Onboarding.location)

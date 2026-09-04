@@ -16,7 +16,9 @@ from app.handlers.onboarding import (
     Onboarding,
     handle_buffer_text,
     handle_location,
+    handle_location_cancel,
     handle_prep_text,
+    handle_settings_edit_cancel,
     handle_transport_choice,
 )
 from app.handlers.settings import handle_edit_request, handle_settings
@@ -284,3 +286,79 @@ async def test_broken_answer_during_edit_keeps_old_value(
     saved = await users.get_user(db, USER_ID)
     assert saved is not None and saved.prep_minutes == 30
     assert await state.get_state() == Onboarding.prep.state
+
+
+# ======================================================================================
+# 4. «Оставить как есть» — передумал менять поле
+# ======================================================================================
+
+
+@pytest.mark.parametrize(
+    "step",
+    [
+        keyboards.STEP_TRANSPORT,
+        keyboards.STEP_PREP,
+        keyboards.STEP_BUFFER,
+    ],
+)
+async def test_edit_keyboard_offers_cancel_button(
+    state: FSMContext, step: str
+) -> None:
+    """При правке через /settings в клавиатуре есть кнопка отмены — это и есть починка
+    жалобы «зашёл менять — нет выбора вернуться назад»."""
+    callback = FakeCallback(data=edit_data(step))
+    await handle_edit_request(callback, state)  # type: ignore[arg-type]
+
+    markup = callback.message.last_markup  # type: ignore[union-attr]
+    last_row = markup.inline_keyboard[-1]
+    assert len(last_row) == 1
+    assert last_row[0].callback_data == keyboards.CB_SETTINGS_CANCEL
+    assert last_row[0].text == texts.BTN_CANCEL_EDIT
+
+
+async def test_cancel_button_leaves_transport_unchanged(
+    db: aiosqlite.Connection, state: FSMContext
+) -> None:
+    await make_onboarded_user(db, transport_mode=users.TRANSPORT_CAR)
+    edit = FakeCallback(data=edit_data(keyboards.STEP_TRANSPORT))
+    await handle_edit_request(edit, state)  # type: ignore[arg-type]
+
+    cancel = FakeCallback(data=keyboards.CB_SETTINGS_CANCEL, message=edit.message)
+    await handle_settings_edit_cancel(cancel, state, db)  # type: ignore[arg-type]
+
+    saved = await users.get_user(db, USER_ID)
+    assert saved is not None and saved.transport_mode == users.TRANSPORT_CAR
+    assert await state.get_state() is None
+    assert cancel.message is not None
+    assert texts.SETTINGS_EDIT_CANCELLED in cancel.message.all_text
+    assert "На машине" in cancel.message.last_answer  # снова показана карточка
+
+
+async def test_cancel_button_outside_dialog_does_not_crash(
+    state: FSMContext, db: aiosqlite.Connection
+) -> None:
+    """Нажатие на устаревшую кнопку (диалог уже не идёт) не должно падать."""
+    callback = FakeCallback(data=keyboards.CB_SETTINGS_CANCEL)
+
+    await handle_settings_edit_cancel(callback, state, db)  # type: ignore[arg-type]
+
+    assert callback.answered
+    assert callback.message is not None
+    assert callback.message.answers == []
+
+
+async def test_location_cancel_button_keeps_old_point(
+    db: aiosqlite.Connection, state: FSMContext
+) -> None:
+    """У геопозиции клавиатура обычная (Reply), кнопка отмены — обычным текстом."""
+    await make_onboarded_user(db, latitude=59.85, longitude=30.25)
+    edit = FakeCallback(data=edit_data(keyboards.STEP_LOCATION))
+    await handle_edit_request(edit, state)  # type: ignore[arg-type]
+
+    answer = FakeMessage(text=texts.BTN_CANCEL_EDIT)
+    await handle_location_cancel(answer, state, db)  # type: ignore[arg-type]
+
+    saved = await users.get_user(db, USER_ID)
+    assert saved is not None and saved.coordinates == (59.85, 30.25)
+    assert await state.get_state() is None
+    assert texts.SETTINGS_EDIT_CANCELLED in answer.all_text

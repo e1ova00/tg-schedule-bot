@@ -20,6 +20,7 @@ from app import texts, users
 
 CB_ONBOARDING = "onb"
 CB_SETTINGS = "set"
+CB_SETTINGS_CANCEL = f"{CB_SETTINGS}:cancel"
 
 STEP_LOCATION = "location"
 STEP_TRANSPORT = "transport"
@@ -34,37 +35,53 @@ def remove_keyboard() -> ReplyKeyboardRemove:
     return ReplyKeyboardRemove()
 
 
-def request_location() -> ReplyKeyboardMarkup:
-    """Нижняя клавиатура с единственной кнопкой «отправить геопозицию»."""
+def request_location(with_cancel: bool = False) -> ReplyKeyboardMarkup:
+    """Нижняя клавиатура с кнопкой «отправить геопозицию».
+
+    При правке через /settings добавляем ещё «Оставить как есть» — иначе единственный
+    выход из шага — набрать /cancel руками, а этого пользователь может не знать.
+    """
+    keyboard = [[KeyboardButton(text=texts.BTN_SEND_LOCATION, request_location=True)]]
+    if with_cancel:
+        keyboard.append([KeyboardButton(text=texts.BTN_CANCEL_EDIT)])
     return ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text=texts.BTN_SEND_LOCATION, request_location=True)]],
+        keyboard=keyboard,
         resize_keyboard=True,
         one_time_keyboard=True,
         input_field_placeholder=texts.LOCATION_PLACEHOLDER,
     )
 
 
-def transport_choice() -> InlineKeyboardMarkup:
+def _with_cancel_row(rows: list[list[InlineKeyboardButton]], with_cancel: bool) -> None:
+    if with_cancel:
+        rows.append(
+            [InlineKeyboardButton(text=texts.BTN_CANCEL_EDIT, callback_data=CB_SETTINGS_CANCEL)]
+        )
+
+
+def transport_choice(with_cancel: bool = False) -> InlineKeyboardMarkup:
     """Машина или общественный транспорт."""
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text=texts.TRANSPORT_TITLES[users.TRANSPORT_CAR],
-                    callback_data=f"{CB_ONBOARDING}:{STEP_TRANSPORT}:{users.TRANSPORT_CAR}",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text=texts.TRANSPORT_TITLES[users.TRANSPORT_PUBLIC],
-                    callback_data=f"{CB_ONBOARDING}:{STEP_TRANSPORT}:{users.TRANSPORT_PUBLIC}",
-                )
-            ],
-        ]
-    )
+    rows = [
+        [
+            InlineKeyboardButton(
+                text=texts.TRANSPORT_TITLES[users.TRANSPORT_CAR],
+                callback_data=f"{CB_ONBOARDING}:{STEP_TRANSPORT}:{users.TRANSPORT_CAR}",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text=texts.TRANSPORT_TITLES[users.TRANSPORT_PUBLIC],
+                callback_data=f"{CB_ONBOARDING}:{STEP_TRANSPORT}:{users.TRANSPORT_PUBLIC}",
+            )
+        ],
+    ]
+    _with_cancel_row(rows, with_cancel)
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def minutes_choice(step: str, options: Sequence[int]) -> InlineKeyboardMarkup:
+def minutes_choice(
+    step: str, options: Sequence[int], with_cancel: bool = False
+) -> InlineKeyboardMarkup:
     """Ряд кнопок-подсказок с минутами. Своё число всё равно можно прислать текстом."""
     row = [
         InlineKeyboardButton(
@@ -72,15 +89,17 @@ def minutes_choice(step: str, options: Sequence[int]) -> InlineKeyboardMarkup:
         )
         for value in options
     ]
-    return InlineKeyboardMarkup(inline_keyboard=[row])
+    rows = [row]
+    _with_cancel_row(rows, with_cancel)
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def prep_choice() -> InlineKeyboardMarkup:
-    return minutes_choice(STEP_PREP, users.PREP_OPTIONS)
+def prep_choice(with_cancel: bool = False) -> InlineKeyboardMarkup:
+    return minutes_choice(STEP_PREP, users.PREP_OPTIONS, with_cancel=with_cancel)
 
 
-def buffer_choice() -> InlineKeyboardMarkup:
-    return minutes_choice(STEP_BUFFER, users.BUFFER_OPTIONS)
+def buffer_choice(with_cancel: bool = False) -> InlineKeyboardMarkup:
+    return minutes_choice(STEP_BUFFER, users.BUFFER_OPTIONS, with_cancel=with_cancel)
 
 
 def settings_menu() -> InlineKeyboardMarkup:
@@ -116,6 +135,7 @@ def parse_callback_value(data: str | None, prefix: str, step: str) -> str | None
 __all__ = [
     "CB_ONBOARDING",
     "CB_SETTINGS",
+    "CB_SETTINGS_CANCEL",
     "EDITABLE_STEPS",
     "STEP_BUFFER",
     "STEP_LOCATION",

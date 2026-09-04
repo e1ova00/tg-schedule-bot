@@ -149,6 +149,24 @@ async def test_location_question_offers_button_and_explains_why(
     assert message.last_markup is not None
 
 
+async def test_onboarding_keyboards_have_no_cancel_button(
+    db: aiosqlite.Connection, state: FSMContext
+) -> None:
+    """Кнопка «Оставить как есть» — только для правки через /settings.
+
+    При первом знакомстве обрывать один вопрос кнопкой некуда: дальше всё равно
+    идти некуда без ответа, а весь диалог целиком можно бросить командой /cancel.
+    """
+    message = await begin_dialog(state, db)
+    assert texts.BTN_CANCEL_EDIT not in str(message.last_markup)
+
+    location_message = FakeMessage(location=HOME)
+    await handle_location(location_message, state, db)  # type: ignore[arg-type]
+    # Тот же объект: сначала «точку запомнил», следом — вопрос про транспорт.
+    assert location_message.last_markup is not None
+    assert texts.BTN_CANCEL_EDIT not in str(location_message.last_markup)
+
+
 async def test_location_step_asks_again_for_text(
     db: aiosqlite.Connection, state: FSMContext
 ) -> None:
@@ -377,7 +395,7 @@ async def test_cancel_stops_dialog_but_keeps_answers(
     await handle_location(FakeMessage(location=HOME), state, db)  # type: ignore[arg-type]
     message = FakeMessage(text="/cancel")
 
-    await handle_cancel(message, state)  # type: ignore[arg-type]
+    await handle_cancel(message, state, db)  # type: ignore[arg-type]
 
     assert message.answers == [texts.ONBOARDING_CANCELLED]
     assert await state.get_state() is None
@@ -386,10 +404,12 @@ async def test_cancel_stops_dialog_but_keeps_answers(
     assert users.is_onboarded(saved) is False
 
 
-async def test_cancel_outside_dialog_is_gentle(state: FSMContext) -> None:
+async def test_cancel_outside_dialog_is_gentle(
+    db: aiosqlite.Connection, state: FSMContext
+) -> None:
     message = FakeMessage(text="/cancel")
 
-    await handle_cancel(message, state)  # type: ignore[arg-type]
+    await handle_cancel(message, state, db)  # type: ignore[arg-type]
 
     assert message.answers == [texts.NOTHING_TO_CANCEL]
 
@@ -399,7 +419,7 @@ async def test_cancelled_dialog_can_be_continued(
 ) -> None:
     """После /cancel человек пишет /start и продолжает с первого вопроса."""
     await begin_dialog(state, db)
-    await handle_cancel(FakeMessage(text="/cancel"), state)  # type: ignore[arg-type]
+    await handle_cancel(FakeMessage(text="/cancel"), state, db)  # type: ignore[arg-type]
 
     message = await begin_dialog(state, db)
 
