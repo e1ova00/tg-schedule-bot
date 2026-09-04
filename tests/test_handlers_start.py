@@ -1,43 +1,33 @@
 """Тесты хендлеров /start, /help и неизвестных команд.
 
 Настоящий Telegram не поднимается: вместо объекта сообщения подставляется заглушка,
-которая просто запоминает, что бот попытался ответить.
+которая просто запоминает, что бот попытался ответить. База — временная, в памяти
+(фикстура `db`), состояние диалога — MemoryStorage (фикстура `state`).
+
+С этапа 3 `/start` — это первый шаг знакомства: новому человеку бот здоровается и сразу
+просит геопозицию, а тому, кто уже всё настроил, отвечает коротким приветствием и заново
+диалог не запускает.
 """
 
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
-from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
+import aiosqlite
 import pytest
 from aiogram import Bot, F
 from aiogram.filters import Command, CommandStart
+from aiogram.fsm.context import FSMContext
 from aiogram.types import Chat, Message, User
 
-from app import texts
+from app import texts, users
 from app.handlers.fallback import handle_unknown_command
+from app.handlers.onboarding import Onboarding
 from app.handlers.start import handle_help, handle_start
+from fakes import USER_ID, FakeMessage, make_onboarded_user
 
 FAKE_TOKEN = "123456789:AAHfake-token-for-tests-only-000000000"
-
-
-@dataclass
-class FakeUser:
-    id: int = 42
-    username: str | None = "tester"
-
-
-@dataclass
-class FakeMessage:
-    """Минимальная замена aiogram.types.Message: хранит ответы бота в списке."""
-
-    text: str = "/start"
-    from_user: FakeUser | None = field(default_factory=FakeUser)
-    answers: list[str] = field(default_factory=list)
-
-    async def answer(self, text: str, **kwargs: object) -> None:
-        self.answers.append(text)
 
 
 # --------------------------------------------------------------------------------------
@@ -45,21 +35,108 @@ class FakeMessage:
 # --------------------------------------------------------------------------------------
 
 
-async def test_start_answers_with_greeting() -> None:
+async def test_start_greets_new_user_and_asks_for_location(
+    db: aiosqlite.Connection, state: FSMContext
+) -> None:
+    """Новому человеку: сначала приветствие, сразу за ним — первый вопрос про геопозицию."""
     message = FakeMessage(text="/start")
 
-    await handle_start(message)  # type: ignore[arg-type]
+    await handle_start(message, state, db)  # type: ignore[arg-type]
 
-    assert message.answers == [texts.START_GREETING]
+    assert message.answers == [texts.START_GREETING, texts.ONBOARDING_INTRO]
+    assert texts.BTN_SEND_LOCATION in message.last_answer
+    # Кнопка «Отправить геопозицию» действительно приложена к вопросу.
+    assert message.last_markup is not None
+    assert await state.get_state() == Onboarding.location.state
 
 
-async def test_start_works_without_from_user() -> None:
-    """Сообщение из канала приходит без from_user — хендлер не должен падать на None."""
+async def test_start_registers_new_user_in_database(
+    db: aiosqlite.Connection, state: FSMContext
+) -> None:
+    """Критерий приёмки этапа: после /start запись о человеке лежит в базе."""
+    message = FakeMessage(text="/start")
+
+    await handle_start(message, state, db)  # type: ignore[arg-type]
+
+    saved = await users.get_user(db, USER_ID)
+    assert saved is not None
+    assert saved.username == "tester"
+    assert saved.created_at
+    # Настройки ещё не заданы: знакомство только началось.
+    assert users.is_onboarded(saved) is False
+
+
+async def test_start_works_without_from_user(
+    db: aiosqlite.Connection, state: FSMContext
+) -> None:
+    """Сообщение из канала приходит без from_user — хендлер не должен падать на None.
+
+    Настраивать в этом случае некого, поэтому бот здоровается и на этом останавливается:
+    в диалог никого не втягиваем и в базу ничего не пишем.
+    """
     message = FakeMessage(text="/start", from_user=None)
 
-    await handle_start(message)  # type: ignore[arg-type]
+    await handle_start(message, state, db)  # type: ignore[arg-type]
 
     assert message.answers == [texts.START_GREETING]
+    assert await state.get_state() is None
+    assert await users.list_users(db) == []
+
+
+async def test_start_for_onboarded_user_does_not_repeat_dialog(
+    db: aiosqlite.Connection, state: FSMContext
+) -> None:
+    """Кто уже настроен — получает короткое приветствие, а не четыре вопроса заново."""
+    await make_onboarded_user(db)
+    message = FakeMessage(text="/start")
+
+    await handle_start(message, state, db)  # type: ignore[arg-type]
+
+    assert message.answers == [texts.START_RETURNING]
+    assert texts.ONBOARDING_INTRO not in message.all_text
+    assert await state.get_state() is None
+
+
+async def test_start_returning_greeting_points_to_settings(
+    db: aiosqlite.Connection, state: FSMContext
+) -> None:
+    """Иначе человек не поймёт, как поменять ответ, если переехал."""
+    await make_onboarded_user(db)
+    message = FakeMessage(text="/start")
+
+    await handle_start(message, state, db)  # type: ignore[arg-type]
+
+    assert "/settings" in message.last_answer
+
+
+async def test_start_keeps_saved_answers_of_onboarded_user(
+    db: aiosqlite.Connection, state: FSMContext
+) -> None:
+    """Повторный /start не должен обнулять уже сохранённые настройки."""
+    await make_onboarded_user(db, prep_minutes=45, buffer_minutes=15)
+    message = FakeMessage(text="/start")
+
+    await handle_start(message, state, db)  # type: ignore[arg-type]
+
+    saved = await users.get_user(db, USER_ID)
+    assert saved is not None
+    assert (saved.prep_minutes, saved.buffer_minutes) == (45, 15)
+    assert users.is_onboarded(saved) is True
+
+
+async def test_start_drops_unfinished_dialog(
+    db: aiosqlite.Connection, state: FSMContext
+) -> None:
+    """/start посреди зависшего диалога начинает всё заново, а не ждёт старый ответ."""
+    await state.set_state(Onboarding.buffer)
+    await state.update_data(mode="settings")
+    message = FakeMessage(text="/start")
+
+    await handle_start(message, state, db)  # type: ignore[arg-type]
+
+    # Новый пользователь → диалог начался с первого вопроса, старые данные FSM стёрты.
+    assert await state.get_state() == Onboarding.location.state
+    assert (await state.get_data()).get("mode") == "onboarding"
 
 
 async def test_help_answers_with_help_text() -> None:
