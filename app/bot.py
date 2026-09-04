@@ -10,6 +10,7 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.types import BotCommand
 
 from app.buildings import seed_buildings
 from app.config import Config
@@ -18,6 +19,17 @@ from app.handlers import build_root_router
 from app.middlewares import AccessMiddleware, DatabaseMiddleware
 
 logger = logging.getLogger(__name__)
+
+# Показывается в Telegram по кнопке ☰ рядом с полем ввода — весь список команд сразу,
+# без необходимости помнить их или искать в /help.
+BOT_COMMANDS: tuple[BotCommand, ...] = (
+    BotCommand(command="today", description="Пары на сегодня"),
+    BotCommand(command="tomorrow", description="Пары на завтра"),
+    BotCommand(command="settings", description="Посмотреть и поменять настройки"),
+    BotCommand(command="help", description="Что я умею"),
+    BotCommand(command="start", description="Поздороваться / начать знакомство"),
+    BotCommand(command="cancel", description="Прервать текущий диалог"),
+)
 
 
 def create_bot(config: Config) -> Bot:
@@ -66,6 +78,8 @@ async def run_bot(config: Config) -> None:
     try:
         me = await bot.get_me()
         logger.info("Бот запущен: @%s (id=%s)", me.username, me.id)
+
+        await bot.set_my_commands(list(BOT_COMMANDS))
 
         # Накопившиеся за время простоя апдейты не нужны: будильник всё равно уже не разбудит.
         try:
