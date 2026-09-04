@@ -62,8 +62,23 @@ def _as_seconds(value: object) -> float | None:
     return seconds if seconds >= 0 else None
 
 
+def _route_duration_seconds(route: dict[str, Any]) -> float | None:
+    """Длительность одного маршрута: `total_duration`, а `duration` — только запасной ключ.
+
+    Раньше оба ключа мешались в одну кучу и бралось наименьшее значение из двух —
+    если 2ГИС кладёт в один и тот же маршрут оба поля с разным смыслом, это могло
+    незаметно занизить время в пути. Для будильника ошибка в эту сторону хуже, чем
+    в другую: лучше разбудить чуть раньше, чем опоздать.
+    """
+    for key in _DURATION_KEYS:
+        seconds = _as_seconds(route.get(key))
+        if seconds is not None:
+            return seconds
+    return None
+
+
 def parse_duration_seconds(payload: Any) -> float:
-    """Достаёт длительность самого быстрого маршрута в секундах.
+    """Достаёт длительность самого быстрого из предложенных маршрутов в секундах.
 
     Пустой список маршрутов — это не «ошибка сервиса», а «пути нет», но для бота разницы
     нет: считать нечего, значит `RouterError`.
@@ -83,8 +98,7 @@ def parse_duration_seconds(payload: Any) -> float:
         seconds
         for route in routes
         if isinstance(route, dict)
-        for key in _DURATION_KEYS
-        if (seconds := _as_seconds(route.get(key))) is not None
+        if (seconds := _route_duration_seconds(route)) is not None
     ]
     if not durations:
         raise RouterError("2ГИС не нашёл ни одного маршрута между точками")

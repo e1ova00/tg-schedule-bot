@@ -16,15 +16,21 @@ import pytest
 from app.config import (
     DEFAULT_DB_PATH,
     DEFAULT_LOG_LEVEL,
+    DEFAULT_ORS_PEAK_HOUR_FACTOR,
+    DEFAULT_ROUTER,
     DEFAULT_TIMEZONE,
+    KNOWN_ROUTERS,
     PROJECT_ROOT,
     Config,
     ConfigError,
     build_config,
     load_config,
+    parse_api_key,
     parse_db_path,
     parse_log_level,
+    parse_peak_hour_factor,
     parse_proxy_url,
+    parse_router,
     parse_timezone,
     parse_user_ids,
 )
@@ -332,6 +338,183 @@ def test_parse_proxy_url_rejects_unknown_scheme() -> None:
     """Опечатка в адресе прокси не должна приводить к непонятной сетевой ошибке позже."""
     with pytest.raises(ConfigError, match="ftp://nope"):
         parse_proxy_url("ftp://nope")
+
+
+# --------------------------------------------------------------------------------------
+# parse_router: какой сервис маршрутов используем (этап 4)
+# --------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        pytest.param("dgis", "dgis", id="2ГИС"),
+        pytest.param("ors", "ors", id="OpenRouteService"),
+        pytest.param("DGIS", "dgis", id="заглавными буквами"),
+        pytest.param("  Ors  ", "ors", id="с пробелами и вперемешку"),
+    ],
+)
+def test_parse_router_valid(raw: str, expected: str) -> None:
+    assert parse_router(raw) == expected
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        pytest.param(None, id="переменной нет"),
+        pytest.param("", id="пустая строка"),
+        pytest.param("   ", id="одни пробелы"),
+    ],
+)
+def test_parse_router_default_is_dgis(raw: str | None) -> None:
+    """По ТЗ основной маршрутизатор — 2ГИС, он же значение по умолчанию."""
+    assert parse_router(raw) == DEFAULT_ROUTER == "dgis"
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        pytest.param("2gis", id="латиницей с цифрой"),
+        pytest.param("2ГИС", id="по-русски"),
+        pytest.param("yandex", id="сервис, которого нет"),
+        pytest.param("openrouteservice", id="полное имя вместо ors"),
+        pytest.param("stub", id="заглушка руками не выбирается"),
+    ],
+)
+def test_parse_router_rejects_unknown(raw: str) -> None:
+    """Опечатка в ROUTER не должна молча включать другой сервис."""
+    with pytest.raises(ConfigError) as exc_info:
+        parse_router(raw)
+
+    message = str(exc_info.value)
+    assert raw in message
+    for known in KNOWN_ROUTERS:
+        assert known in message
+
+
+# --------------------------------------------------------------------------------------
+# parse_api_key: ключи внешних сервисов
+# --------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        pytest.param(None, id="переменной нет"),
+        pytest.param("", id="пустая строка"),
+        pytest.param("     ", id="одни пробелы"),
+        pytest.param("\n\t", id="перевод строки"),
+    ],
+)
+def test_parse_api_key_empty_means_no_key(raw: str | None) -> None:
+    """Пустой ключ — это «ключа нет», а не ошибка: бот должен запускаться и без него."""
+    assert parse_api_key(raw) is None
+
+
+def test_parse_api_key_trims_spaces() -> None:
+    """Ключ, скопированный из письма с пробелом на конце, всё равно должен работать."""
+    assert parse_api_key("  ruaaaa1111  \n") == "ruaaaa1111"
+
+
+# --------------------------------------------------------------------------------------
+# parse_peak_hour_factor: поправка на час пик для запасного маршрутизатора
+# --------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        pytest.param("1.4", 1.4, id="обычное значение"),
+        pytest.param("2", 2.0, id="целое число"),
+        pytest.param(" 1.25 ", 1.25, id="с пробелами"),
+        pytest.param("1,5", 1.5, id="запятая вместо точки"),
+        pytest.param("1.01", 1.01, id="чуть больше единицы"),
+    ],
+)
+def test_parse_peak_hour_factor_valid(raw: str, expected: float) -> None:
+    assert parse_peak_hour_factor(raw) == pytest.approx(expected)
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        pytest.param(None, id="переменной нет"),
+        pytest.param("", id="пустая строка"),
+        pytest.param("   ", id="одни пробелы"),
+    ],
+)
+def test_parse_peak_hour_factor_default(raw: str | None) -> None:
+    assert parse_peak_hour_factor(raw) == DEFAULT_ORS_PEAK_HOUR_FACTOR == 1.4
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        pytest.param("1.0", id="ровно единица — поправка молча отключилась бы"),
+        pytest.param("1", id="единица целым числом"),
+        pytest.param("0.8", id="меньше единицы"),
+        pytest.param("0", id="ноль"),
+        pytest.param("-2", id="отрицательное"),
+    ],
+)
+def test_parse_peak_hour_factor_rejects_too_small(raw: str) -> None:
+    """В час пик дорога длиннее обычной, а не короче — иначе будильник сдвинется незаметно."""
+    with pytest.raises(ConfigError) as exc_info:
+        parse_peak_hour_factor(raw)
+
+    assert "1.0" in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        pytest.param("много", id="словами"),
+        pytest.param("40%", id="проценты"),
+        pytest.param("1.4x", id="лишняя буква"),
+    ],
+)
+def test_parse_peak_hour_factor_rejects_not_a_number(raw: str) -> None:
+    with pytest.raises(ConfigError) as exc_info:
+        parse_peak_hour_factor(raw)
+
+    assert raw in str(exc_info.value)
+
+
+# --------------------------------------------------------------------------------------
+# build_config: настройки маршрутов целиком
+# --------------------------------------------------------------------------------------
+
+
+def test_build_config_reads_routing_settings() -> None:
+    config = build_config(
+        {
+            "BOT_TOKEN": "123456:AAHfake-token",
+            "ROUTER": "ors",
+            "DGIS_API_KEY": "ключ-2гис",
+            "ORS_API_KEY": "ключ-ors",
+            "ORS_PEAK_HOUR_FACTOR": "1.6",
+        }
+    )
+
+    assert config.router == "ors"
+    assert config.dgis_api_key == "ключ-2гис"
+    assert config.ors_api_key == "ключ-ors"
+    assert config.ors_peak_hour_factor == pytest.approx(1.6)
+
+
+def test_build_config_without_any_keys_still_works() -> None:
+    """Ключей нет — бот всё равно должен запускаться: /route посчитает грубо, по прямой."""
+    config = build_config({"BOT_TOKEN": "123456:AAHfake-token"})
+
+    assert config.router == DEFAULT_ROUTER
+    assert config.dgis_api_key is None
+    assert config.ors_api_key is None
+    assert config.ors_peak_hour_factor == DEFAULT_ORS_PEAK_HOUR_FACTOR
+
+
+def test_build_config_rejects_unknown_router() -> None:
+    with pytest.raises(ConfigError):
+        build_config({"BOT_TOKEN": "123456:AAHfake-token", "ROUTER": "яндекс"})
 
 
 # --------------------------------------------------------------------------------------
