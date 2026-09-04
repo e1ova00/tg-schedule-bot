@@ -3,6 +3,9 @@
 __pycache__/
 *.pyc
 data/bot.db
+# Спутники SQLite в режиме WAL
+data/bot.db-wal
+data/bot.db-shm
 *.log
 logs/
 .pytest_cache/

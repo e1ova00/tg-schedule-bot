@@ -2,13 +2,17 @@
 
 from aiogram import Router
 
-from app.handlers import fallback, schedule, start
+from app.handlers import fallback, onboarding, schedule, settings, start
 
 _root_router: Router | None = None
 
 
 def build_root_router() -> Router:
     """Собирает все роутеры в один. Fallback подключается последним — он ловит остаток.
+
+    Порядок важен: команды (/start, /today, /settings) идут до онбординга, поэтому
+    работают даже посреди диалога. Онбординг ловит остальные сообщения, но только когда
+    пользователь действительно находится в одном из состояний FSM.
 
     Роутеры-источники — синглтоны на уровне модуля, а aiogram не даёт прикрепить один
     роутер к двум родителям сразу. Поэтому здесь кэшируем результат: повторный вызов
@@ -20,6 +24,8 @@ def build_root_router() -> Router:
         router = Router(name="root")
         router.include_router(start.router)
         router.include_router(schedule.router)
+        router.include_router(settings.router)
+        router.include_router(onboarding.router)
         router.include_router(fallback.router)
         _root_router = router
     return _root_router

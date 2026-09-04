@@ -88,6 +88,8 @@ def setup_logging(
 
     # aiohttp на каждом long polling пишет служебные строки — они тут не нужны.
     logging.getLogger("aiohttp.access").setLevel(logging.WARNING)
+    # aiosqlite на DEBUG печатает каждый SQL-запрос дважды и топит в этом полезные строки.
+    logging.getLogger("aiosqlite").setLevel(logging.INFO)
 
 
 def ensure_utf8_console() -> None:
