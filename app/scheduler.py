@@ -122,9 +122,15 @@ class AlarmScheduler:
             logger.exception("Не удалось прочитать список пользователей для будильника")
             return []
 
+        allowed = self._config.allowed_user_ids
+
         decisions: list[str] = []
         for user in everyone:
             if not users.is_onboarded(user):
+                continue
+            if allowed and user.telegram_id not in allowed:
+                # Бот приватный — если список задан, будильник тоже только для своих.
+                # Иначе убрать человека из ALLOWED_USER_IDS ничего бы не меняло для него.
                 continue
             try:
                 decisions.append(await self.plan_for_user(user, day, at))

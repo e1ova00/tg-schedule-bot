@@ -9,11 +9,14 @@ from __future__ import annotations
 
 import logging
 import os
+from datetime import time
 from pathlib import Path
 
 import pytest
 
 from app.config import (
+    DEFAULT_ALARM_FALLBACK_TRAVEL_MINUTES,
+    DEFAULT_ALARM_PLANNING_TIME,
     DEFAULT_DB_PATH,
     DEFAULT_LOG_LEVEL,
     DEFAULT_ORS_PEAK_HOUR_FACTOR,
@@ -25,6 +28,8 @@ from app.config import (
     ConfigError,
     build_config,
     load_config,
+    parse_alarm_fallback_travel_minutes,
+    parse_alarm_planning_time,
     parse_api_key,
     parse_db_path,
     parse_log_level,
@@ -515,6 +520,142 @@ def test_build_config_without_any_keys_still_works() -> None:
 def test_build_config_rejects_unknown_router() -> None:
     with pytest.raises(ConfigError):
         build_config({"BOT_TOKEN": "123456:AAHfake-token", "ROUTER": "яндекс"})
+
+
+# --------------------------------------------------------------------------------------
+# parse_alarm_planning_time
+# --------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("05:00", time(5, 0)),
+        ("00:00", time(0, 0)),
+        ("23:59", time(23, 59)),
+        ("5:07", time(5, 7)),
+        ("  06:30  ", time(6, 30)),
+    ],
+)
+def test_parse_alarm_planning_time_valid(raw: str, expected: time) -> None:
+    assert parse_alarm_planning_time(raw) == expected
+
+
+@pytest.mark.parametrize("raw", [None, "", "   "])
+def test_parse_alarm_planning_time_default(raw: str | None) -> None:
+    assert parse_alarm_planning_time(raw) == DEFAULT_ALARM_PLANNING_TIME
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "утром",  # не число
+        "05",  # нет минут
+        "05:00:00",  # три компонента
+        "5.30",  # точка вместо двоеточия
+        "24:00",  # часов не бывает 24
+        "-1:00",  # отрицательные часы
+        "05:60",  # минут не бывает 60
+        "05:ноль",  # минуты не число
+        ":",  # пусто с обеих сторон
+    ],
+)
+def test_parse_alarm_planning_time_rejects_garbage(raw: str) -> None:
+    with pytest.raises(ConfigError):
+        parse_alarm_planning_time(raw)
+
+
+def test_parse_alarm_planning_time_error_is_understandable() -> None:
+    """Пользователь не программист: в тексте должны быть и его значение, и формат."""
+    with pytest.raises(ConfigError) as exc_info:
+        parse_alarm_planning_time("полшестого")
+
+    message = str(exc_info.value)
+    assert "полшестого" in message
+    assert "ЧЧ:ММ" in message
+    assert "ALARM_PLANNING_TIME" in message
+
+
+# --------------------------------------------------------------------------------------
+# parse_alarm_fallback_travel_minutes
+# --------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [("45", 45), ("1", 1), (" 90 ", 90), ("120", 120)],
+)
+def test_parse_alarm_fallback_travel_minutes_valid(raw: str, expected: int) -> None:
+    assert parse_alarm_fallback_travel_minutes(raw) == expected
+
+
+@pytest.mark.parametrize("raw", [None, "", "   "])
+def test_parse_alarm_fallback_travel_minutes_default(raw: str | None) -> None:
+    assert parse_alarm_fallback_travel_minutes(raw) == DEFAULT_ALARM_FALLBACK_TRAVEL_MINUTES
+
+
+@pytest.mark.parametrize("raw", ["0", "-10", "-1"])
+def test_parse_alarm_fallback_travel_minutes_rejects_non_positive(raw: str) -> None:
+    """Ноль означал бы «дорога мгновенная» — с ним будильник разбудит слишком поздно."""
+    with pytest.raises(ConfigError):
+        parse_alarm_fallback_travel_minutes(raw)
+
+
+@pytest.mark.parametrize("raw", ["час", "45 минут", "30.5", "сорок", "1,5"])
+def test_parse_alarm_fallback_travel_minutes_rejects_not_a_number(raw: str) -> None:
+    with pytest.raises(ConfigError):
+        parse_alarm_fallback_travel_minutes(raw)
+
+
+def test_parse_alarm_fallback_travel_minutes_error_is_understandable() -> None:
+    with pytest.raises(ConfigError) as exc_info:
+        parse_alarm_fallback_travel_minutes("0")
+
+    message = str(exc_info.value)
+    assert "ALARM_FALLBACK_TRAVEL_MINUTES" in message
+    assert str(DEFAULT_ALARM_FALLBACK_TRAVEL_MINUTES) in message
+
+
+# --------------------------------------------------------------------------------------
+# build_config: настройки будильника целиком
+# --------------------------------------------------------------------------------------
+
+
+def test_build_config_reads_alarm_settings() -> None:
+    config = build_config(
+        {
+            "BOT_TOKEN": "123456:AAHfake-token",
+            "ALARM_PLANNING_TIME": "04:45",
+            "ALARM_FALLBACK_TRAVEL_MINUTES": "50",
+        }
+    )
+
+    assert config.alarm_planning_time == time(4, 45)
+    assert config.alarm_fallback_travel_minutes == 50
+
+
+def test_build_config_alarm_defaults() -> None:
+    config = build_config({"BOT_TOKEN": "123456:AAHfake-token"})
+
+    assert config.alarm_planning_time == DEFAULT_ALARM_PLANNING_TIME
+    assert config.alarm_fallback_travel_minutes == DEFAULT_ALARM_FALLBACK_TRAVEL_MINUTES
+
+
+def test_planning_time_is_earlier_than_any_realistic_wake_up() -> None:
+    """Пересчёт в 05:00 должен идти до самого раннего подъёма: пары начинаются в 10:05."""
+    assert DEFAULT_ALARM_PLANNING_TIME <= time(6, 0)
+
+
+@pytest.mark.parametrize(
+    "bad_env",
+    [
+        {"ALARM_PLANNING_TIME": "25:00"},
+        {"ALARM_FALLBACK_TRAVEL_MINUTES": "0"},
+    ],
+)
+def test_build_config_rejects_bad_alarm_settings(bad_env: dict[str, str]) -> None:
+    with pytest.raises(ConfigError):
+        build_config({"BOT_TOKEN": "123456:AAHfake-token", **bad_env})
 
 
 # --------------------------------------------------------------------------------------
