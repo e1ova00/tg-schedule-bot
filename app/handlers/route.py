@@ -55,7 +55,7 @@ async def handle_route(
     day, lesson = found
     # Корпус берём у самой пары: это тот же адрес, что вернул бы building_for_date,
     # но без риска промахнуться, если первая пара дня уже началась и мы едем на вторую.
-    destination = await _building_point(db, lesson.building)
+    destination = await buildings.building_point(db, lesson.building)
     if destination is None:
         logger.error("Нет координат корпуса «%s» ни в базе, ни в константах", lesson.building)
         await message.answer(texts.ROUTE_FAILED)
@@ -83,18 +83,3 @@ async def handle_route(
     await message.answer(
         views.format_route(day, lesson, travel, user.transport_mode, now.date())
     )
-
-
-async def _building_point(
-    db: aiosqlite.Connection, address: str
-) -> tuple[float, float] | None:
-    """Координаты корпуса: сначала из базы (кэш геокодинга), потом из констант."""
-    try:
-        saved = await buildings.get_building(db, address)
-    except Exception:  # noqa: BLE001 — база не должна ломать ответ, есть запасной путь
-        logger.warning("Не удалось прочитать корпус «%s» из базы", address, exc_info=True)
-        saved = None
-
-    if saved is not None:
-        return (saved.latitude, saved.longitude)
-    return buildings.building_coordinates(address)

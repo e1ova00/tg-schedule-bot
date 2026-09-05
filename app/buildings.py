@@ -148,6 +148,24 @@ async def list_buildings(conn: aiosqlite.Connection) -> list[Building]:
     return [_row_to_building(row) for row in rows]
 
 
+async def building_point(
+    conn: aiosqlite.Connection, address: str
+) -> tuple[float, float] | None:
+    """Координаты корпуса: сначала из базы (кэш геокодинга), потом из констант.
+
+    Сбой базы здесь не должен ломать расчёт маршрута — константы всегда под рукой.
+    """
+    try:
+        saved = await get_building(conn, address)
+    except Exception:  # noqa: BLE001 — есть запасной путь, падать незачем
+        logger.warning("Не удалось прочитать корпус «%s» из базы", address, exc_info=True)
+        saved = None
+
+    if saved is not None:
+        return (saved.latitude, saved.longitude)
+    return building_coordinates(address)
+
+
 async def save_building(
     conn: aiosqlite.Connection,
     building: Building,
@@ -181,6 +199,7 @@ __all__ = [
     "Building",
     "building_coordinates",
     "building_for_date",
+    "building_point",
     "building_title",
     "get_building",
     "list_buildings",

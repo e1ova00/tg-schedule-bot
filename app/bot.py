@@ -18,6 +18,7 @@ from app.db import open_database
 from app.handlers import build_root_router
 from app.middlewares import AccessMiddleware, DatabaseMiddleware, RouterMiddleware
 from app.routing import Router, create_router
+from app.scheduler import AlarmScheduler
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,7 @@ BOT_COMMANDS: tuple[BotCommand, ...] = (
     BotCommand(command="today", description="Пары на сегодня"),
     BotCommand(command="tomorrow", description="Пары на завтра"),
     BotCommand(command="route", description="Сколько ехать до корпуса"),
+    BotCommand(command="preview", description="Во сколько разбужу завтра"),
     BotCommand(command="settings", description="Посмотреть и поменять настройки"),
     BotCommand(command="help", description="Что я умею"),
     BotCommand(command="start", description="Поздороваться / начать знакомство"),
@@ -56,7 +58,8 @@ def create_dispatcher(
     внутри у него живёт HTTP-сессия. Если его не передали — берём по конфигу; сеть при
     этом не трогается, так что для тестов это безопасно.
     """
-    dispatcher = Dispatcher(storage=MemoryStorage())
+    # config кладём в контекст диспетчера: /preview берёт оттуда запасное время в пути.
+    dispatcher = Dispatcher(storage=MemoryStorage(), config=config)
     dispatcher.update.outer_middleware(AccessMiddleware(config.allowed_user_ids))
     if db is not None:
         dispatcher.update.outer_middleware(DatabaseMiddleware(db))
@@ -85,6 +88,7 @@ async def run_bot(config: Config) -> None:
         )
 
     dispatcher = create_dispatcher(config, db, travel_router)
+    alarms = AlarmScheduler(bot, db, travel_router, config)
 
     try:
         me = await bot.get_me()
@@ -98,8 +102,14 @@ async def run_bot(config: Config) -> None:
         except Exception:  # noqa: BLE001 — некритично, polling работает и без этого
             logger.warning("Не удалось сбросить webhook, продолжаем без этого", exc_info=True)
 
+        # Задачи будильника живут в памяти, поэтому после каждого старта их надо
+        # посчитать заново — и сразу, а не только в следующий ALARM_PLANNING_TIME.
+        alarms.start()
+        await alarms.plan_today()
+
         await dispatcher.start_polling(bot, handle_signals=True)
     finally:
+        await alarms.shutdown()
         await travel_router.close()
         await db.close()
         await bot.session.close()

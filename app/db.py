@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import date
 from pathlib import Path
 
 import aiosqlite
@@ -40,6 +41,17 @@ SCHEMA: tuple[str, ...] = (
         longitude   REAL,
         source      TEXT,
         updated_at  TEXT
+    )
+    """,
+    # Отметка «этому человеку будильник на эту дату уже уходил». Задачи планировщика
+    # живут в памяти и пересчитываются при каждом старте бота, поэтому без такой записи
+    # случайный перезапуск в 7 утра разбудил бы второй раз за то же утро.
+    """
+    CREATE TABLE IF NOT EXISTS alarm_log (
+        telegram_id INTEGER NOT NULL,
+        date        TEXT NOT NULL,
+        sent_at     TEXT,
+        PRIMARY KEY (telegram_id, date)
     )
     """,
 )
@@ -88,4 +100,49 @@ async def open_database(db_path: Path | str) -> aiosqlite.Connection:
     return conn
 
 
-__all__ = ["SCHEMA", "connect", "init_schema", "now_iso", "open_database"]
+# --- Журнал отправленных будильников ------------------------------------------------
+
+
+async def already_sent(
+    conn: aiosqlite.Connection, telegram_id: int, day: date
+) -> bool:
+    """Уходил ли уже будильник этому человеку на эту дату."""
+    async with conn.execute(
+        "SELECT 1 FROM alarm_log WHERE telegram_id = ? AND date = ?",
+        (telegram_id, day.isoformat()),
+    ) as cursor:
+        return await cursor.fetchone() is not None
+
+
+async def mark_sent(conn: aiosqlite.Connection, telegram_id: int, day: date) -> None:
+    """Отмечает, что будильник на эту дату отправлен.
+
+    `INSERT OR IGNORE`: повторный вызов не должен ни падать, ни сдвигать время первой
+    отправки — именно оно интересно, если потом разбираться, почему звонок был не вовремя.
+    """
+    await conn.execute(
+        "INSERT OR IGNORE INTO alarm_log (telegram_id, date, sent_at) VALUES (?, ?, ?)",
+        (telegram_id, day.isoformat(), now_iso()),
+    )
+    await conn.commit()
+
+
+async def forget_sent(conn: aiosqlite.Connection, telegram_id: int, day: date) -> None:
+    """Убирает отметку об отправке. Нужна тестам и ручной перепроверке будильника."""
+    await conn.execute(
+        "DELETE FROM alarm_log WHERE telegram_id = ? AND date = ?",
+        (telegram_id, day.isoformat()),
+    )
+    await conn.commit()
+
+
+__all__ = [
+    "SCHEMA",
+    "already_sent",
+    "connect",
+    "forget_sent",
+    "init_schema",
+    "mark_sent",
+    "now_iso",
+    "open_database",
+]

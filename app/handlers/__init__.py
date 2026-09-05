@@ -2,7 +2,7 @@
 
 from aiogram import Router
 
-from app.handlers import fallback, onboarding, route, schedule, settings, start
+from app.handlers import fallback, onboarding, preview, route, schedule, settings, start
 
 _root_router: Router | None = None
 
@@ -25,6 +25,7 @@ def build_root_router() -> Router:
         router.include_router(start.router)
         router.include_router(schedule.router)
         router.include_router(route.router)
+        router.include_router(preview.router)
         router.include_router(settings.router)
         router.include_router(onboarding.router)
         router.include_router(fallback.router)

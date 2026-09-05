@@ -10,6 +10,7 @@ import logging
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import time
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -29,6 +30,15 @@ DEFAULT_ROUTER = ROUTER_DGIS
 # Во сколько раз дорога дольше в час пик. Нужен только запасному маршрутизатору:
 # пробок он не знает, поэтому «утренний час» закладывается коэффициентом.
 DEFAULT_ORS_PEAK_HOUR_FACTOR = 1.4
+
+# Будильник. Рано утром бот считает маршруты на сегодня и ставит задачи на точное время
+# подъёма. Час должен быть заведомо раньше самого раннего подъёма: то, что уже прошло,
+# планировщик может только досрочно отправить, но не «отмотать назад».
+DEFAULT_ALARM_PLANNING_TIME = time(5, 0)
+
+# Сколько минут считать «дорогой», если сервис маршрутов не ответил. Лучше разбудить по
+# грубой оценке с честной оговоркой, чем не разбудить вовсе.
+DEFAULT_ALARM_FALLBACK_TRAVEL_MINUTES = 60
 
 _KNOWN_LOG_LEVELS = ("CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG")
 _KNOWN_PROXY_SCHEMES = ("socks4://", "socks5://", "http://", "https://")
@@ -57,6 +67,9 @@ class Config:
     dgis_api_key: str | None = None
     ors_api_key: str | None = None
     ors_peak_hour_factor: float = DEFAULT_ORS_PEAK_HOUR_FACTOR
+    # Будильник: когда планировать утро и чем заменить время в пути, если сеть подвела.
+    alarm_planning_time: time = DEFAULT_ALARM_PLANNING_TIME
+    alarm_fallback_travel_minutes: int = DEFAULT_ALARM_FALLBACK_TRAVEL_MINUTES
 
 
 def parse_user_ids(raw: str | None) -> tuple[int, ...]:
@@ -169,6 +182,54 @@ def parse_peak_hour_factor(raw: str | None) -> float:
     return factor
 
 
+def parse_alarm_planning_time(raw: str | None) -> time:
+    """Время «ЧЧ:ММ» по Москве, когда бот пересчитывает будильники на день."""
+    value = (raw or "").strip()
+    if not value:
+        return DEFAULT_ALARM_PLANNING_TIME
+
+    example = DEFAULT_ALARM_PLANNING_TIME.strftime("%H:%M")
+    parts = value.split(":")
+    if len(parts) != 2:
+        raise ConfigError(
+            f"ALARM_PLANNING_TIME=«{raw}» не похоже на время. Нужен формат ЧЧ:ММ, "
+            f"например {example}."
+        )
+    try:
+        return time(int(parts[0]), int(parts[1]))
+    except ValueError as exc:
+        raise ConfigError(
+            f"ALARM_PLANNING_TIME=«{raw}» не похоже на время. Нужен формат ЧЧ:ММ "
+            f"(часы 0–23, минуты 0–59), например {example}."
+        ) from exc
+
+
+def parse_alarm_fallback_travel_minutes(raw: str | None) -> int:
+    """Запасное время в пути, когда сервис маршрутов молчит.
+
+    Ноль и отрицательные значения запрещены: с ними будильник посчитал бы, что дорога
+    не занимает времени, и разбудил бы слишком поздно.
+    """
+    value = (raw or "").strip()
+    if not value:
+        return DEFAULT_ALARM_FALLBACK_TRAVEL_MINUTES
+    try:
+        minutes = int(value)
+    except ValueError as exc:
+        raise ConfigError(
+            f"ALARM_FALLBACK_TRAVEL_MINUTES=«{raw}» — это не целое число минут. "
+            f"Впишите, сколько обычно занимает дорога, например "
+            f"{DEFAULT_ALARM_FALLBACK_TRAVEL_MINUTES}."
+        ) from exc
+    if minutes <= 0:
+        raise ConfigError(
+            f"ALARM_FALLBACK_TRAVEL_MINUTES=«{raw}» должно быть больше нуля: дорога до "
+            f"корпуса не бывает мгновенной. Обычное значение — "
+            f"{DEFAULT_ALARM_FALLBACK_TRAVEL_MINUTES}."
+        )
+    return minutes
+
+
 def parse_db_path(raw: str | None, project_root: Path = PROJECT_ROOT) -> Path:
     """Путь к файлу SQLite. Относительный путь считается от корня проекта."""
     value = (raw or "").strip() or DEFAULT_DB_PATH
@@ -195,6 +256,10 @@ def build_config(env: Mapping[str, str]) -> Config:
         dgis_api_key=parse_api_key(env.get("DGIS_API_KEY")),
         ors_api_key=parse_api_key(env.get("ORS_API_KEY")),
         ors_peak_hour_factor=parse_peak_hour_factor(env.get("ORS_PEAK_HOUR_FACTOR")),
+        alarm_planning_time=parse_alarm_planning_time(env.get("ALARM_PLANNING_TIME")),
+        alarm_fallback_travel_minutes=parse_alarm_fallback_travel_minutes(
+            env.get("ALARM_FALLBACK_TRAVEL_MINUTES")
+        ),
     )
 
 
