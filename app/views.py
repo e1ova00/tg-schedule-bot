@@ -14,6 +14,7 @@ from app import alarm, texts, users
 from app.alarm import AlarmPlan
 from app.buildings import building_title
 from app.clock import MOSCOW
+from app.db import Note
 from app.routing.base import TravelTime
 from app.schedule import Lesson, format_date, parity_word
 
@@ -236,8 +237,90 @@ def format_preview(plan: AlarmPlan, user: users.User | None, today: date) -> str
     return "\n\n".join((header, wake, body, texts.PREVIEW_HINT))
 
 
+# --- Заметки ------------------------------------------------------------------------
+
+
+def _subject_text(lesson: Lesson | None) -> str:
+    """Название предмета для заметки. Пары может уже не быть в расписании — не падаем."""
+    if lesson is None:
+        return texts.NOTE_UNKNOWN_LESSON
+    return escape(lesson.subject)
+
+
+def format_note_prompt(lesson: Lesson) -> str:
+    """Вопрос «есть что записать?» через десять минут после пары."""
+    return texts.NOTES_PROMPT.format(
+        subject=escape(lesson.subject), time=lesson.time_range
+    )
+
+
+def format_note_saved(due_date: date | None) -> str:
+    """Подтверждение сохранения. Без срока — честно говорим, что напоминаний не будет."""
+    if due_date is None:
+        return texts.NOTES_SAVED_NO_DUE
+    return texts.NOTES_SAVED.format(due=format_date(due_date))
+
+
+def format_note_item(note: Note, lesson: Lesson | None) -> str:
+    """Одна заметка в списке /notes.
+
+    Текст заметки писал человек, а сообщения уходят с parse_mode=HTML — экранируем,
+    иначе «<3» в домашке уронит отправку всего списка.
+    """
+    mark = "" if note.is_open else texts.NOTE_ITEM_DONE_MARK
+    if lesson is None:
+        head = texts.NOTE_ITEM_NO_TIME.format(
+            mark=mark,
+            date=format_date(note.lesson_date),
+            subject=_subject_text(lesson),
+            text=escape(note.text),
+        )
+    else:
+        head = texts.NOTE_ITEM.format(
+            mark=mark,
+            date=format_date(note.lesson_date),
+            time=lesson.time_range,
+            subject=_subject_text(lesson),
+            text=escape(note.text),
+        )
+    lines = [head]
+    if not note.is_open:
+        lines.append(texts.NOTE_ITEM_CLOSED)
+    elif note.due_date is None:
+        lines.append(texts.NOTE_ITEM_DUE_NONE)
+    else:
+        lines.append(texts.NOTE_ITEM_DUE.format(due=format_date(note.due_date)))
+    return "\n".join(lines)
+
+
+def format_note_reminder(note: Note, lesson: Lesson | None, *, morning: bool) -> str:
+    """Напоминание по заметке: за сутки до пары или утром в её день."""
+    template = (
+        texts.NOTE_REMINDER_MORNING if morning else texts.NOTE_REMINDER_DAY_BEFORE
+    )
+    return template.format(
+        time=lesson.start_text if lesson else "",
+        subject=_subject_text(lesson),
+        text=escape(note.text),
+    )
+
+
+def notes_title(period: str) -> str:
+    return texts.NOTES_TITLES.get(period, texts.NOTES_TITLES["open"])
+
+
+def notes_empty(period: str) -> str:
+    return texts.NOTES_EMPTY.get(period, texts.NOTES_EMPTY["open"])
+
+
 __all__ = [
     "alarm_silence_reason",
+    "format_note_item",
+    "format_note_prompt",
+    "format_note_reminder",
+    "format_note_saved",
+    "notes_empty",
+    "notes_title",
     "format_alarm",
     "format_minutes",
     "format_preview",

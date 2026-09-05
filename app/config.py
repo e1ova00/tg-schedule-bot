@@ -40,6 +40,10 @@ DEFAULT_ALARM_PLANNING_TIME = time(5, 0)
 # грубой оценке с честной оговоркой, чем не разбудить вовсе.
 DEFAULT_ALARM_FALLBACK_TRAVEL_MINUTES = 60
 
+# Во сколько утром напоминать про незакрытые заметки в день самой пары. Раньше первой
+# пары (10:05) и заметно раньше самого позднего разумного выхода из дома.
+DEFAULT_NOTES_MORNING_TIME = time(8, 0)
+
 _KNOWN_LOG_LEVELS = ("CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG")
 _KNOWN_PROXY_SCHEMES = ("socks4://", "socks5://", "http://", "https://")
 
@@ -70,6 +74,8 @@ class Config:
     # Будильник: когда планировать утро и чем заменить время в пути, если сеть подвела.
     alarm_planning_time: time = DEFAULT_ALARM_PLANNING_TIME
     alarm_fallback_travel_minutes: int = DEFAULT_ALARM_FALLBACK_TRAVEL_MINUTES
+    # Заметки: во сколько утром напомнить про домашку к сегодняшней паре.
+    notes_morning_time: time = DEFAULT_NOTES_MORNING_TIME
 
 
 def parse_user_ids(raw: str | None) -> tuple[int, ...]:
@@ -182,26 +188,40 @@ def parse_peak_hour_factor(raw: str | None) -> float:
     return factor
 
 
-def parse_alarm_planning_time(raw: str | None) -> time:
-    """Время «ЧЧ:ММ» по Москве, когда бот пересчитывает будильники на день."""
+def _parse_clock_time(raw: str | None, variable: str, default: time) -> time:
+    """Общий разбор настроек вида «ЧЧ:ММ» по Москве.
+
+    Имя переменной подставляется в текст ошибки: пользователь не программист, ему нужно
+    видеть, какую именно строку в .env исправлять.
+    """
     value = (raw or "").strip()
     if not value:
-        return DEFAULT_ALARM_PLANNING_TIME
+        return default
 
-    example = DEFAULT_ALARM_PLANNING_TIME.strftime("%H:%M")
+    example = default.strftime("%H:%M")
     parts = value.split(":")
     if len(parts) != 2:
         raise ConfigError(
-            f"ALARM_PLANNING_TIME=«{raw}» не похоже на время. Нужен формат ЧЧ:ММ, "
+            f"{variable}=«{raw}» не похоже на время. Нужен формат ЧЧ:ММ, "
             f"например {example}."
         )
     try:
         return time(int(parts[0]), int(parts[1]))
     except ValueError as exc:
         raise ConfigError(
-            f"ALARM_PLANNING_TIME=«{raw}» не похоже на время. Нужен формат ЧЧ:ММ "
+            f"{variable}=«{raw}» не похоже на время. Нужен формат ЧЧ:ММ "
             f"(часы 0–23, минуты 0–59), например {example}."
         ) from exc
+
+
+def parse_alarm_planning_time(raw: str | None) -> time:
+    """Время «ЧЧ:ММ» по Москве, когда бот пересчитывает будильники на день."""
+    return _parse_clock_time(raw, "ALARM_PLANNING_TIME", DEFAULT_ALARM_PLANNING_TIME)
+
+
+def parse_notes_morning_time(raw: str | None) -> time:
+    """Время «ЧЧ:ММ» по Москве для утреннего напоминания про незакрытую заметку."""
+    return _parse_clock_time(raw, "NOTES_MORNING_TIME", DEFAULT_NOTES_MORNING_TIME)
 
 
 def parse_alarm_fallback_travel_minutes(raw: str | None) -> int:
@@ -260,6 +280,7 @@ def build_config(env: Mapping[str, str]) -> Config:
         alarm_fallback_travel_minutes=parse_alarm_fallback_travel_minutes(
             env.get("ALARM_FALLBACK_TRAVEL_MINUTES")
         ),
+        notes_morning_time=parse_notes_morning_time(env.get("NOTES_MORNING_TIME")),
     )
 
 

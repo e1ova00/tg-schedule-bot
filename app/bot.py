@@ -17,6 +17,7 @@ from app.config import Config
 from app.db import open_database
 from app.handlers import build_root_router
 from app.middlewares import AccessMiddleware, DatabaseMiddleware, RouterMiddleware
+from app.notes_scheduler import NotesScheduler
 from app.routing import Router, create_router
 from app.scheduler import AlarmScheduler
 
@@ -29,6 +30,7 @@ BOT_COMMANDS: tuple[BotCommand, ...] = (
     BotCommand(command="tomorrow", description="Пары на завтра"),
     BotCommand(command="route", description="Сколько ехать до корпуса"),
     BotCommand(command="preview", description="Во сколько разбужу завтра"),
+    BotCommand(command="notes", description="Заметки по парам"),
     BotCommand(command="settings", description="Посмотреть и поменять настройки"),
     BotCommand(command="help", description="Что я умею"),
     BotCommand(command="start", description="Поздороваться / начать знакомство"),
@@ -89,6 +91,9 @@ async def run_bot(config: Config) -> None:
 
     dispatcher = create_dispatcher(config, db, travel_router)
     alarms = AlarmScheduler(bot, db, travel_router, config)
+    # Планировщик у заметок тот же самый: два AsyncIOScheduler в одном процессе — это
+    # второй пул потоков и вторая точка отказа ради двух-трёх человек.
+    note_jobs = NotesScheduler(bot, db, config, alarms.scheduler)
 
     try:
         me = await bot.get_me()
@@ -106,6 +111,11 @@ async def run_bot(config: Config) -> None:
         # посчитать заново — и сразу, а не только в следующий ALARM_PLANNING_TIME.
         alarms.start()
         await alarms.plan_today()
+
+        # Вопросы про домашку и напоминания по заметкам тоже живут в памяти —
+        # пересчитываем их сразу после старта. Планировщик уже запущен будильником.
+        note_jobs.start()
+        await note_jobs.plan_today()
 
         await dispatcher.start_polling(bot, handle_signals=True)
     finally:

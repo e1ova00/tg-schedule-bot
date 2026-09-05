@@ -214,6 +214,19 @@ def lessons_on(d: date, lessons: Sequence[Lesson] | None = None) -> list[Lesson]
     return sorted(today, key=lambda lesson: (lesson.start, lesson.id))
 
 
+def lesson_by_id(lesson_id: str, lessons: Sequence[Lesson] | None = None) -> Lesson | None:
+    """Занятие по его id или None, если такого в расписании нет.
+
+    None — не ошибка: заметка могла остаться от старой версии файла расписания, и падать
+    из-за этого бот не должен.
+    """
+    source = load_lessons() if lessons is None else lessons
+    for lesson in source:
+        if lesson.id == lesson_id:
+            return lesson
+    return None
+
+
 def first_offline_lesson(d: date, lessons: Sequence[Lesson] | None = None) -> Lesson | None:
     """Первая очная пара дня или None, если весь день дистанционный/пустой."""
     for lesson in lessons_on(d, lessons):
@@ -331,6 +344,7 @@ __all__ = [
     "format_day",
     "format_lesson",
     "has_offline_lessons",
+    "lesson_by_id",
     "lessons_on",
     "load_lessons",
     "parity_word",
