@@ -143,10 +143,13 @@ class NotesScheduler:
     async def _plan_prompt(
         self, lesson: Lesson, day: date, moment: datetime
     ) -> str | None:
-        """Одна пара: ставим задачу или молчим. None — задачи не будет."""
+        """Одна пара: ставим задачу, спрашиваем сразу или молчим. None — задачи нет."""
         at = notes.prompt_at(lesson, day)
-        if at <= moment:
-            # Момент вопроса прошёл, пока бот был выключен. Досылать с опозданием не будем.
+        late = moment - at
+
+        if late > timedelta(seconds=PROMPT_MISFIRE_GRACE_SECONDS):
+            # Опоздание больше той же форы, что и у уже поставленной задачи (см. ниже) —
+            # момент вопроса прошёл давно, пока бот был выключен. Досылать не будем.
             logger.debug(
                 "Вопрос про домашку по %s (%s) уже неактуален: момент был в %s",
                 lesson.id,
@@ -158,6 +161,18 @@ class NotesScheduler:
         pending = await self._pending_recipients(lesson.id, day)
         if not pending:
             logger.debug("Про пару %s (%s) уже спрошено у всех", lesson.id, day)
+            return None
+
+        if late > timedelta(0):
+            # Момент уже наступил, но в пределах форы — как и опоздавшая задача, спрашиваем
+            # прямо сейчас, а не молчим только из-за того, что бот перезапустился чуть позже.
+            logger.info(
+                "Опоздал с вопросом про домашку по %s (%s) на %s — спрашиваю сейчас",
+                lesson.id,
+                day,
+                late,
+            )
+            await self.send_prompt(lesson.id, day, moment)
             return None
 
         job_id = prompt_job_id(lesson.id, day)

@@ -123,8 +123,15 @@ async def handle_notes(
 
 
 @router.callback_query(F.data.startswith(f"{keyboards.CB_NOTES}:{keyboards.NOTE_PERIOD}:"))
-async def handle_notes_period(callback: CallbackQuery, db: aiosqlite.Connection) -> None:
-    """Кнопка периода под списком."""
+async def handle_notes_period(
+    callback: CallbackQuery, state: FSMContext, db: aiosqlite.Connection
+) -> None:
+    """Кнопка периода под списком.
+
+    Если человек не ответил на «Что задали?» и вместо этого переключил период —
+    ожидание текста заметки нужно снять, иначе следующее сообщение (уже не текст
+    заметки, а что угодно) молча уйдёт как её содержимое.
+    """
     period = keyboards.parse_note_period(callback.data)
     message = common.callback_message(callback)
     if period is None or message is None:
@@ -132,6 +139,7 @@ async def handle_notes_period(callback: CallbackQuery, db: aiosqlite.Connection)
         return
 
     await callback.answer()
+    await state.clear()
     await send_notes_list(message, db, callback.from_user.id, period, clock.today())
 
 
