@@ -9,3 +9,5 @@ data/bot.db-shm
 *.log
 logs/
 .pytest_cache/
+# Резервные копии базы на сервере (scripts/backup_db.sh)
+backups/
