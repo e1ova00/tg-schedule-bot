@@ -3,6 +3,7 @@
 from aiogram import Router
 
 from app.handlers import (
+    add_note,
     fallback,
     notes,
     onboarding,
@@ -11,6 +12,8 @@ from app.handlers import (
     schedule,
     settings,
     start,
+    teacher_notes,
+    week,
 )
 
 _root_router: Router | None = None
@@ -25,7 +28,11 @@ def build_root_router() -> Router:
 
     Заметки подключены до онбординга: их /cancel отменяет только ввод текста заметки
     (у него есть фильтр по состоянию), а общий /cancel онбординга такого фильтра не имеет
-    и перехватил бы команду первым.
+    и перехватил бы команду первым. То же самое у /teachernote и /addnote — у них свои
+    состояния и свои /cancel.
+
+    Заметки к парам идут раньше /addnote: кнопка выбора пары в /addnote присылает тот же
+    callback, что и «Есть» после пары, и обрабатывать его должен один хендлер — из notes.
 
     Роутеры-источники — синглтоны на уровне модуля, а aiogram не даёт прикрепить один
     роутер к двум родителям сразу. Поэтому здесь кэшируем результат: повторный вызов
@@ -37,10 +44,13 @@ def build_root_router() -> Router:
         router = Router(name="root")
         router.include_router(start.router)
         router.include_router(schedule.router)
+        router.include_router(week.router)
         router.include_router(route.router)
         router.include_router(preview.router)
         router.include_router(settings.router)
         router.include_router(notes.router)
+        router.include_router(teacher_notes.router)
+        router.include_router(add_note.router)
         router.include_router(onboarding.router)
         router.include_router(fallback.router)
         _root_router = router

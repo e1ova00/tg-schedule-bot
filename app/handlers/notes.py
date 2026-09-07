@@ -120,6 +120,9 @@ async def handle_notes(
     # Команда прерывает недописанную заметку: продолжать диалог, показав список, странно.
     await state.clear()
     await send_notes_list(message, db, user_id, keyboards.PERIOD_OPEN, clock.today())
+    # Заметки про пары и про преподавателей — одна система, а не два разных острова:
+    # из /notes должно быть видно, что есть и вторая половина.
+    await message.answer(texts.NOTES_TEACHER_HINT)
 
 
 @router.callback_query(F.data.startswith(f"{keyboards.CB_NOTES}:{keyboards.NOTE_PERIOD}:"))
@@ -228,6 +231,18 @@ async def handle_note_text(
     note = await db_module.create_note(
         db, user_id, str(lesson_id), lesson_date, text, due_date
     )
+
+    # Заметка по этой паре уже есть — спрашивать «Есть / Нет» после неё больше не нужно.
+    # В обычном сценарии отметка и так стоит (вопрос был раньше текста), но через
+    # /addnote вопроса не было вовсе, а оба пути приходят сюда. Ставим её здесь одним
+    # местом на оба входа; INSERT OR IGNORE делает повтор безобидным.
+    try:
+        await db_module.mark_prompted(db, user_id, str(lesson_id), lesson_date)
+    except Exception:  # noqa: BLE001 — заметка уже сохранена, из-за журнала падать нельзя
+        logger.exception(
+            "Не удалось отметить пару %s (%s) как «уже спрошено»", lesson_id, lesson_date
+        )
+
     await state.clear()
     logger.info(
         "Заметка %s создана: пользователь=%s пара=%s (%s), срок=%s",

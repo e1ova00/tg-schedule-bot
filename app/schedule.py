@@ -29,6 +29,13 @@ EVEN = "even"
 BOTH = "both"
 _KNOWN_PARITIES = (ODD, EVEN, BOTH)
 
+# Сколько дней недели показывать в /week: с понедельника по субботу. Воскресенья
+# в расписании нет вообще, и пустая строка «воскресенье — пар нет» только шумит.
+WEEK_DAYS_SHOWN = 6
+
+# На сколько недель вперёд и назад разрешено листать /week.
+WEEK_NAV_LIMIT = 52
+
 
 class ScheduleError(Exception):
     """Файл расписания не читается или в нём испорчены данные."""
@@ -190,10 +197,43 @@ def clear_cache() -> None:
     _lessons_cache.clear()
 
 
+def parse_iso_date(raw: str | None) -> date | None:
+    """«2026-09-15» -> дата. Пусто или непонятный текст -> None.
+
+    Общая точка разбора даты для всех команд (/preview, /day, /week, /addnote): формат
+    один, и текст ошибки от команды к команде не разъезжается. Пустую строку и мусор
+    намеренно не различаем — «какой день показывать, если даты нет» решает сам хендлер:
+    у /preview это завтра, у /day — сегодня.
+    """
+    value = (raw or "").strip()
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def monday_of(d: date) -> date:
+    """Понедельник недели, в которую попала дата. Неделя у группы всегда с понедельника."""
+    return d - timedelta(days=d.weekday())
+
+
 def week_parity(d: date) -> str:
     """«odd» (числитель) или «even» (знаменатель) для недели, в которую попала дата."""
-    monday = d - timedelta(days=d.weekday())
-    return ODD if ((monday - ANCHOR).days // 7) % 2 == 0 else EVEN
+    return ODD if ((monday_of(d) - ANCHOR).days // 7) % 2 == 0 else EVEN
+
+
+def week_in_range(
+    monday: date, today: date, *, limit_weeks: int = WEEK_NAV_LIMIT
+) -> bool:
+    """Попадает ли неделя в разумный диапазон вокруг сегодняшней даты.
+
+    Расписание бесконечно повторяется по чётности, поэтому формально листать можно
+    хоть до 2050 года — но показывать пары «через двадцать лет» бессмысленно, а если
+    в данных однажды появятся границы семестра, ограничение уже будет на месте.
+    """
+    return abs((monday_of(monday) - monday_of(today)).days) <= limit_weeks * 7
 
 
 def lessons_on(d: date, lessons: Sequence[Lesson] | None = None) -> list[Lesson]:
@@ -269,6 +309,17 @@ def upcoming_offline_lesson(
     return None
 
 
+def teachers(lessons: Sequence[Lesson] | None = None) -> tuple[str, ...]:
+    """Уникальные имена преподавателей из расписания, по алфавиту.
+
+    Список берётся только из данных — выдумывать фамилии нельзя. Порядок фиксированный
+    и стабильный: индекс в этом кортеже уходит в callback_data кнопки (кириллица плюс
+    двоеточия в 64 байта лимита не помещаются и ломают разбор).
+    """
+    source = load_lessons() if lessons is None else lessons
+    return tuple(sorted({lesson.teacher for lesson in source if lesson.teacher.strip()}))
+
+
 def has_offline_lessons(d: date, lessons: Sequence[Lesson] | None = None) -> bool:
     """Есть ли в этот день хотя бы одна очная пара (пригодится будильнику на этапе 5)."""
     return first_offline_lesson(d, lessons) is not None
@@ -335,20 +386,86 @@ def format_day(d: date, day_lessons: Sequence[Lesson], today: date | None = None
     return f"{header}\n\n{body}"
 
 
+def _week_place(lesson: Lesson) -> str:
+    """Где идёт пара — коротко, одной строкой в обзоре недели."""
+    if lesson.is_remote:
+        return texts.LESSON_REMOTE
+    return texts.WEEK_ROOM.format(room=escape(lesson.room))
+
+
+def format_week_day(
+    d: date, day_lessons: Sequence[Lesson], today: date | None = None
+) -> str:
+    """Один день внутри обзора недели: заголовок и компактный список пар."""
+    weekday_name = texts.WEEKDAYS_RU[d.weekday()].capitalize()
+    template = (
+        texts.WEEK_DAY_TODAY if today is not None and d == today else texts.WEEK_DAY
+    )
+    title = template.format(weekday=weekday_name, date=format_date(d))
+
+    if not day_lessons:
+        return f"{title}\n{texts.WEEK_DAY_EMPTY}"
+
+    rows = [
+        texts.WEEK_LESSON.format(
+            time=lesson.start_text,
+            subject=escape(lesson.subject),
+            kind=escape(lesson.kind),
+            place=_week_place(lesson),
+        )
+        for lesson in day_lessons
+    ]
+    return "\n".join([title, *rows])
+
+
+def format_week(
+    monday: date, today: date | None = None, lessons: Sequence[Lesson] | None = None
+) -> str:
+    """Готовый текст /week: заголовок с диапазоном и чётностью плюс дни с понедельника по субботу.
+
+    `monday` приводится к понедельнику своей недели — так неделя не «съедет», даже если
+    хендлер передаст сюда произвольную дату. `today` нужен только для пометки текущего
+    дня; на выборку пар он не влияет.
+    """
+    start = monday_of(monday)
+    end = start + timedelta(days=WEEK_DAYS_SHOWN - 1)
+
+    header = texts.WEEK_HEADER.format(
+        start=format_date(start),
+        end=format_date(end),
+        parity=parity_word(start),
+    )
+
+    blocks = [header]
+    for offset in range(WEEK_DAYS_SHOWN):
+        day = start + timedelta(days=offset)
+        blocks.append(format_week_day(day, lessons_on(day, lessons), today))
+    blocks.append(texts.WEEK_FOOTER)
+    return "\n\n".join(blocks)
+
+
 __all__ = [
     "ANCHOR",
+    "WEEK_DAYS_SHOWN",
+    "WEEK_NAV_LIMIT",
     "Lesson",
     "ScheduleError",
     "clear_cache",
     "first_offline_lesson",
     "format_day",
     "format_lesson",
+    "format_week",
+    "format_week_day",
     "has_offline_lessons",
     "lesson_by_id",
     "lessons_on",
     "load_lessons",
+    "monday_of",
     "parity_word",
+    "parse_iso_date",
     "parse_schedule",
+    "teachers",
     "upcoming_offline_lesson",
+    "week_in_range",
     "week_parity",
 ]

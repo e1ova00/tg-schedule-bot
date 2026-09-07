@@ -97,6 +97,19 @@ SCHEMA: tuple[str, ...] = (
         PRIMARY KEY (telegram_id, lesson_id, lesson_date)
     )
     """,
+    # Заметка про преподавателя — справочная, а не задача: «принимает только на почту»,
+    # «требует отчёт в pdf». Поэтому здесь нет ни статуса, ни срока, ни напоминаний.
+    # teacher хранится строкой ровно в том виде, как в расписании («Зверев В.В.») —
+    # выбор идёт кнопкой, так что двух написаний одного человека появиться не может.
+    """
+    CREATE TABLE IF NOT EXISTS teacher_notes (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        telegram_id INTEGER NOT NULL,
+        teacher     TEXT NOT NULL,
+        text        TEXT NOT NULL,
+        created_at  TEXT
+    )
+    """,
     # То же самое для напоминаний: «за сутки» и «утром» по каждой заметке уходят
     # ровно по одному разу. Это не то же, что закрытие заметки: незакрытая заметка
     # остаётся в списке, но повторно бомбить ею человека не нужно.
@@ -354,6 +367,89 @@ async def list_open_notes(
     )
 
 
+# --- Заметки про преподавателей ------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class TeacherNote:
+    """Строка таблицы `teacher_notes` — что человек запомнил про преподавателя."""
+
+    id: int
+    telegram_id: int
+    teacher: str
+    text: str
+    created_at: str | None = None
+
+
+def _row_to_teacher_note(row: aiosqlite.Row) -> TeacherNote:
+    return TeacherNote(
+        id=int(row["id"]),
+        telegram_id=int(row["telegram_id"]),
+        teacher=str(row["teacher"]),
+        text=str(row["text"]),
+        created_at=row["created_at"],
+    )
+
+
+async def create_teacher_note(
+    conn: aiosqlite.Connection, telegram_id: int, teacher: str, text: str
+) -> TeacherNote:
+    """Сохраняет заметку про преподавателя и возвращает её целиком."""
+    cursor = await conn.execute(
+        "INSERT INTO teacher_notes (telegram_id, teacher, text, created_at) "
+        "VALUES (?, ?, ?, ?)",
+        (telegram_id, teacher, text, now_iso()),
+    )
+    await conn.commit()
+
+    note_id = int(cursor.lastrowid or 0)
+    await cursor.close()
+    note = await get_teacher_note(conn, note_id)
+    assert note is not None  # только что вставили — строка обязана быть
+    return note
+
+
+async def get_teacher_note(
+    conn: aiosqlite.Connection, note_id: int
+) -> TeacherNote | None:
+    """Заметка про преподавателя по id или None, если её нет."""
+    async with conn.execute(
+        "SELECT * FROM teacher_notes WHERE id = ?", (note_id,)
+    ) as cursor:
+        row = await cursor.fetchone()
+    return _row_to_teacher_note(row) if row else None
+
+
+async def list_teacher_notes(
+    conn: aiosqlite.Connection, telegram_id: int | None = None, *, teacher: str | None = None
+) -> list[TeacherNote]:
+    """Заметки про преподавателей, от старой к новой.
+
+    Порядок «старые сверху» выбран сознательно: список печатается сверху вниз, и в
+    Telegram на экране остаётся его конец — то есть самая свежая запись. Так же
+    устроен и список /notes, чтобы два списка ощущались одинаково.
+    """
+    conditions: list[str] = []
+    params: list[object] = []
+
+    if telegram_id is not None:
+        conditions.append("telegram_id = ?")
+        params.append(telegram_id)
+    if teacher is not None:
+        conditions.append("teacher = ?")
+        params.append(teacher)
+
+    where = f" WHERE {' AND '.join(conditions)}" if conditions else ""
+    async with conn.execute(
+        # id в сортировке — страховка: created_at пишется с точностью до секунды,
+        # и две заметки подряд могут получить одинаковую отметку времени.
+        f"SELECT * FROM teacher_notes{where} ORDER BY created_at, id",  # noqa: S608 — условия собраны из констант
+        params,
+    ) as cursor:
+        rows = await cursor.fetchall()
+    return [_row_to_teacher_note(row) for row in rows]
+
+
 # --- Журнал вопросов про домашку -----------------------------------------------------
 
 
@@ -409,17 +505,21 @@ __all__ = [
     "REMINDER_MORNING",
     "SCHEMA",
     "Note",
+    "TeacherNote",
     "already_prompted",
     "already_reminded",
     "already_sent",
     "close_note",
     "connect",
     "create_note",
+    "create_teacher_note",
     "forget_sent",
     "get_note",
+    "get_teacher_note",
     "init_schema",
     "list_notes",
     "list_open_notes",
+    "list_teacher_notes",
     "mark_prompted",
     "mark_reminded",
     "mark_sent",

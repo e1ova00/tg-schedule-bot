@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import date, datetime
 from html import escape
 
@@ -14,7 +15,7 @@ from app import alarm, texts, users
 from app.alarm import AlarmPlan
 from app.buildings import building_title
 from app.clock import MOSCOW
-from app.db import Note
+from app.db import Note, TeacherNote
 from app.routing.base import TravelTime
 from app.schedule import Lesson, format_date, parity_word
 
@@ -313,9 +314,52 @@ def notes_empty(period: str) -> str:
     return texts.NOTES_EMPTY.get(period, texts.NOTES_EMPTY["open"])
 
 
+def format_lesson_pick(day: date) -> str:
+    """Заголовок над кнопками выбора пары в /addnote."""
+    return texts.ADDNOTE_PICK_LESSON.format(
+        weekday=texts.WEEKDAYS_RU[day.weekday()].capitalize(),
+        date=format_date(day),
+    )
+
+
+def format_no_lessons_to_note(day: date) -> str:
+    """Пустой день в /addnote: привязывать заметку не к чему, и это нормально."""
+    return texts.ADDNOTE_NO_LESSONS.format(date=format_date(day).capitalize())
+
+
+# --- Заметки про преподавателей ------------------------------------------------------
+
+
+def format_teacher_notes(notes: Sequence[TeacherNote]) -> str:
+    """Список заметок про преподавателей, сгруппированный по человеку.
+
+    Группировка по фамилии, а не сплошная лента: заметки справочные, и ищут их именно
+    «что там было про Зверева». Порядок преподавателей — по алфавиту, внутри группы
+    сохраняется порядок добавления.
+    """
+    by_teacher: dict[str, list[TeacherNote]] = {}
+    for note in notes:
+        by_teacher.setdefault(note.teacher, []).append(note)
+
+    blocks: list[str] = []
+    for teacher in sorted(by_teacher):
+        lines = [texts.TEACHER_NOTE_GROUP.format(teacher=escape(teacher))]
+        lines.extend(
+            # Текст писал человек, а сообщения уходят с parse_mode=HTML: «<3» без
+            # экранирования уронил бы отправку всего списка.
+            texts.TEACHER_NOTE_ITEM.format(text=escape(note.text))
+            for note in by_teacher[teacher]
+        )
+        blocks.append("\n".join(lines))
+    return "\n\n".join(blocks)
+
+
 __all__ = [
     "alarm_silence_reason",
+    "format_lesson_pick",
+    "format_no_lessons_to_note",
     "format_note_item",
+    "format_teacher_notes",
     "format_note_prompt",
     "format_note_reminder",
     "format_note_saved",

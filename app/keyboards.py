@@ -8,7 +8,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import date
+from datetime import date, timedelta
 
 from aiogram.types import (
     InlineKeyboardButton,
@@ -19,11 +19,15 @@ from aiogram.types import (
 )
 
 from app import texts, users
+from app.schedule import Lesson
 
 CB_ONBOARDING = "onb"
 CB_SETTINGS = "set"
 CB_SETTINGS_CANCEL = f"{CB_SETTINGS}:cancel"
 CB_NOTES = "note"
+CB_WEEK = "week"
+CB_ADD_NOTE = "anote"
+CB_TEACHER_NOTES = "tnote"
 
 STEP_LOCATION = "location"
 STEP_TRANSPORT = "transport"
@@ -44,6 +48,17 @@ PERIOD_OPEN = "open"
 PERIOD_WEEK = "week"
 PERIOD_ALL = "all"
 NOTE_PERIODS: tuple[str, ...] = (PERIOD_OPEN, PERIOD_WEEK, PERIOD_ALL)
+
+# Шаги в callback_data остальных команд.
+WEEK_GO = "go"  # листание недель: «week:go:2026-09-07» (понедельник нужной недели)
+ADD_NOTE_DAY = "day"  # быстрый выбор дня в /addnote: «anote:day:2026-09-07»
+TEACHER_ADD = "add"  # «Добавить заметку» в /teachernote
+TEACHER_LIST = "list"  # «Посмотреть все» в /teachernote
+TEACHER_PICK = "pick"  # выбор преподавателя: «tnote:pick:3» — индекс в teachers()
+
+# Сколько символов названия предмета влезает в кнопку выбора пары: Telegram обрезает
+# длинные подписи сам и некрасиво, поэтому режем осмысленно и ставим многоточие.
+MAX_BUTTON_SUBJECT = 40
 
 
 def remove_keyboard() -> ReplyKeyboardRemove:
@@ -247,11 +262,170 @@ def parse_note_period(data: str | None) -> str | None:
     return value if value in NOTE_PERIODS else None
 
 
+def _parse_date_value(data: str | None, prefix: str, step: str) -> date | None:
+    """Дата из callback_data вида «префикс:шаг:2026-09-07». Мусор — None."""
+    raw = parse_callback_value(data, prefix, step)
+    if raw is None:
+        return None
+    try:
+        return date.fromisoformat(raw)
+    except ValueError:
+        return None
+
+
+# --- Неделя (/week) -----------------------------------------------------------------
+
+
+def week_nav(
+    monday: date, *, with_prev: bool = True, with_next: bool = True
+) -> InlineKeyboardMarkup:
+    """Кнопки листания недель. В callback — понедельник соседней недели.
+
+    Дата в кнопке, а не «сдвиг на единицу»: сообщение живёт долго, и через неделю
+    относительный сдвиг привёл бы совсем не туда, куда человек ожидает.
+    """
+    row: list[InlineKeyboardButton] = []
+    if with_prev:
+        row.append(
+            InlineKeyboardButton(
+                text=texts.BTN_WEEK_PREV,
+                callback_data=f"{CB_WEEK}:{WEEK_GO}:{(monday - timedelta(days=7)).isoformat()}",
+            )
+        )
+    if with_next:
+        row.append(
+            InlineKeyboardButton(
+                text=texts.BTN_WEEK_NEXT,
+                callback_data=f"{CB_WEEK}:{WEEK_GO}:{(monday + timedelta(days=7)).isoformat()}",
+            )
+        )
+    return InlineKeyboardMarkup(inline_keyboard=[row] if row else [])
+
+
+def parse_week_monday(data: str | None) -> date | None:
+    """Понедельник нужной недели из «week:go:2026-09-07»."""
+    return _parse_date_value(data, CB_WEEK, WEEK_GO)
+
+
+# --- Заметка к любой паре (/addnote) -------------------------------------------------
+
+
+def add_note_days(today: date) -> InlineKeyboardMarkup:
+    """«Сегодня» и «Завтра» — самые частые ответы на вопрос про дату."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=texts.BTN_DAY_TODAY,
+                    callback_data=f"{CB_ADD_NOTE}:{ADD_NOTE_DAY}:{today.isoformat()}",
+                ),
+                InlineKeyboardButton(
+                    text=texts.BTN_DAY_TOMORROW,
+                    callback_data=(
+                        f"{CB_ADD_NOTE}:{ADD_NOTE_DAY}:"
+                        f"{(today + timedelta(days=1)).isoformat()}"
+                    ),
+                ),
+            ]
+        ]
+    )
+
+
+def parse_add_note_day(data: str | None) -> date | None:
+    """Дата из «anote:day:2026-09-07»."""
+    return _parse_date_value(data, CB_ADD_NOTE, ADD_NOTE_DAY)
+
+
+def _button_subject(subject: str) -> str:
+    """Название предмета для подписи кнопки — коротко, но узнаваемо."""
+    if len(subject) <= MAX_BUTTON_SUBJECT:
+        return subject
+    return subject[: MAX_BUTTON_SUBJECT - 1].rstrip() + "…"
+
+
+def lesson_choice(day: date, lessons: Sequence[Lesson]) -> InlineKeyboardMarkup:
+    """Кнопки «выбрать пару» для /addnote.
+
+    callback_data намеренно совпадает с кнопкой «Есть» из вопроса после пары
+    (`note:has:L1216:2026-09-01`): дальше работает уже существующий хендлер, который
+    спросит текст и сохранит заметку. Второго пути сохранения быть не должно.
+    """
+    day_iso = day.isoformat()
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=f"{lesson.start_text} · {_button_subject(lesson.subject)}",
+                    callback_data=f"{CB_NOTES}:{NOTE_HAS}:{lesson.id}:{day_iso}",
+                )
+            ]
+            for lesson in lessons
+        ]
+    )
+
+
+# --- Заметки про преподавателей (/teachernote) ---------------------------------------
+
+
+def teacher_notes_menu() -> InlineKeyboardMarkup:
+    """Два действия команды: добавить заметку или посмотреть все."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=texts.BTN_TEACHER_NOTE_ADD,
+                    callback_data=f"{CB_TEACHER_NOTES}:{TEACHER_ADD}",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text=texts.BTN_TEACHER_NOTE_LIST,
+                    callback_data=f"{CB_TEACHER_NOTES}:{TEACHER_LIST}",
+                )
+            ],
+        ]
+    )
+
+
+def teacher_choice(names: Sequence[str]) -> InlineKeyboardMarkup:
+    """Список преподавателей кнопками, по двое в ряд.
+
+    В callback_data уходит индекс в переданном списке, а не фамилия: кириллица в UTF-8
+    занимает по два байта на букву, а лимит Telegram — 64 байта на всю строку.
+    Индекс же гарантирует, что «Зверев В.В.» из разных мест — это один и тот же человек.
+    """
+    rows: list[list[InlineKeyboardButton]] = []
+    for index, name in enumerate(names):
+        button = InlineKeyboardButton(
+            text=name, callback_data=f"{CB_TEACHER_NOTES}:{TEACHER_PICK}:{index}"
+        )
+        if index % 2 == 0:
+            rows.append([button])
+        else:
+            rows[-1].append(button)
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def parse_teacher_index(data: str | None) -> int | None:
+    """Индекс преподавателя из «tnote:pick:3». Не число или мусор — None."""
+    raw = parse_callback_value(data, CB_TEACHER_NOTES, TEACHER_PICK)
+    if raw is None:
+        return None
+    try:
+        index = int(raw)
+    except ValueError:
+        return None
+    return index if index >= 0 else None
+
+
 __all__ = [
+    "CB_ADD_NOTE",
     "CB_NOTES",
     "CB_ONBOARDING",
     "CB_SETTINGS",
     "CB_SETTINGS_CANCEL",
+    "CB_TEACHER_NOTES",
+    "CB_WEEK",
     "EDITABLE_STEPS",
     "NOTE_DONE",
     "NOTE_HAS",
@@ -266,18 +440,30 @@ __all__ = [
     "STEP_LOCATION",
     "STEP_PREP",
     "STEP_TRANSPORT",
+    "TEACHER_ADD",
+    "TEACHER_LIST",
+    "TEACHER_PICK",
+    "WEEK_GO",
+    "add_note_days",
     "buffer_choice",
+    "lesson_choice",
     "minutes_choice",
     "note_done",
     "note_prompt",
     "notes_periods",
+    "parse_add_note_day",
     "parse_callback_value",
     "parse_note_id",
     "parse_note_lesson",
     "parse_note_period",
+    "parse_teacher_index",
+    "parse_week_monday",
     "prep_choice",
     "remove_keyboard",
     "request_location",
     "settings_menu",
+    "teacher_choice",
+    "teacher_notes_menu",
     "transport_choice",
+    "week_nav",
 ]

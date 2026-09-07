@@ -28,9 +28,13 @@ logger = logging.getLogger(__name__)
 BOT_COMMANDS: tuple[BotCommand, ...] = (
     BotCommand(command="today", description="Пары на сегодня"),
     BotCommand(command="tomorrow", description="Пары на завтра"),
+    BotCommand(command="day", description="Пары на любую дату"),
+    BotCommand(command="week", description="Расписание на неделю"),
     BotCommand(command="route", description="Сколько ехать до корпуса"),
     BotCommand(command="preview", description="Во сколько разбужу завтра"),
     BotCommand(command="notes", description="Заметки по парам"),
+    BotCommand(command="addnote", description="Добавить заметку к любой паре"),
+    BotCommand(command="teachernote", description="Заметки про преподавателей"),
     BotCommand(command="settings", description="Посмотреть и поменять настройки"),
     BotCommand(command="help", description="Что я умею"),
     BotCommand(command="start", description="Поздороваться / начать знакомство"),

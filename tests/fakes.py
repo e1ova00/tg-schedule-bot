@@ -47,10 +47,16 @@ class FakeMessage:
     answers: list[str] = field(default_factory=list)
     markups: list[Any] = field(default_factory=list)
     edited_markups: int = 0
+    # Правки того же сообщения (кнопки листания недели): (текст, клавиатура).
+    edits: list[tuple[str, Any]] = field(default_factory=list)
 
     async def answer(self, text: str, **kwargs: Any) -> None:
         self.answers.append(text)
         self.markups.append(kwargs.get("reply_markup"))
+
+    async def edit_text(self, text: str, **kwargs: Any) -> None:
+        """Замена текста на месте: так /week листается, не засоряя чат."""
+        self.edits.append((text, kwargs.get("reply_markup")))
 
     async def edit_reply_markup(self, **kwargs: Any) -> None:
         """Снятие кнопок под сообщением — только считаем вызовы."""

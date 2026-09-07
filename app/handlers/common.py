@@ -2,10 +2,24 @@
 
 from __future__ import annotations
 
+from html import escape
+
 import aiosqlite
 from aiogram.types import CallbackQuery, InaccessibleMessage, Message
 
 from app import keyboards, users, views
+
+# Сколько символов непонятного аргумента показать в ответе об ошибке формата.
+MAX_SHOWN_ARG = 50
+
+
+def shown_arg(raw: str | None) -> str:
+    """Аргумент команды в том виде, в котором его безопасно вернуть пользователю.
+
+    Ответы уходят с parse_mode=HTML, поэтому «/day <b>» без экранирования сломал бы
+    разметку всего сообщения. Длину режем: цитировать простыню незачем.
+    """
+    return escape((raw or "").strip()[:MAX_SHOWN_ARG])
 
 
 async def send_settings(
@@ -43,4 +57,10 @@ async def hide_inline_keyboard(callback: CallbackQuery) -> None:
         pass
 
 
-__all__ = ["callback_message", "hide_inline_keyboard", "send_settings"]
+__all__ = [
+    "MAX_SHOWN_ARG",
+    "callback_message",
+    "hide_inline_keyboard",
+    "send_settings",
+    "shown_arg",
+]

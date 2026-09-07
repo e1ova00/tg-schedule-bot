@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import logging
 from datetime import date, timedelta
-from html import escape
 
 import aiosqlite
 from aiogram import Router as AiogramRouter
@@ -21,29 +20,24 @@ from aiogram.types import Message
 
 from app import alarm, clock, texts, users, views
 from app.config import DEFAULT_ALARM_FALLBACK_TRAVEL_MINUTES, Config
+from app.handlers import common
 from app.routing.base import Router
-from app.schedule import ScheduleError
+from app.schedule import ScheduleError, parse_iso_date
 
 logger = logging.getLogger(__name__)
 
 router = AiogramRouter(name="preview")
 
-# Сколько символов непонятного аргумента показать в ответе об ошибке формата.
-MAX_SHOWN_ARG = 50
-
 
 def parse_preview_date(raw: str | None, today: date) -> date | None:
     """«2026-09-15» -> дата. Пусто — завтра. Непонятный текст — None (ошибка формата).
 
-    Чистая функция: её можно проверить без Telegram.
+    Разбор самой даты живёт в `app/schedule.py` и общий для всех команд; здесь остаётся
+    только правило «без аргумента показываем завтра», своё именно у /preview.
     """
-    value = (raw or "").strip()
-    if not value:
+    if not (raw or "").strip():
         return today + timedelta(days=1)
-    try:
-        return date.fromisoformat(value)
-    except ValueError:
-        return None
+    return parse_iso_date(raw)
 
 
 @router.message(Command("preview"))
@@ -63,10 +57,9 @@ async def handle_preview(
 
     day = parse_preview_date(command.args, today)
     if day is None:
-        # Текст пользователя возвращается в HTML-сообщении, поэтому экранируем его
-        # и обрезаем: иначе «/preview <b>» сломал бы разметку ответа.
-        shown = escape((command.args or "").strip()[:MAX_SHOWN_ARG])
-        await message.answer(texts.PREVIEW_BAD_DATE.format(value=shown))
+        await message.answer(
+            texts.PREVIEW_BAD_DATE.format(value=common.shown_arg(command.args))
+        )
         return
 
     user = await users.get_user(db, user_id)
