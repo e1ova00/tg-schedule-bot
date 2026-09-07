@@ -1,4 +1,4 @@
-"""Тесты команд /today и /tomorrow.
+"""Тесты команд /today, /tomorrow и /day.
 
 Настоящий Telegram не поднимается: вместо сообщения — заглушка, которая запоминает
 ответы бота. «Сегодняшняя» дата подменяется через `app.clock.today`, поэтому тесты
@@ -13,11 +13,12 @@ from datetime import date, datetime, timezone
 
 import pytest
 from aiogram import Bot, Router
-from aiogram.filters import Command
+from aiogram.filters import Command, CommandObject
 from aiogram.types import Chat, Message, User
 
 from app import clock, texts
-from app.handlers.schedule import handle_today, handle_tomorrow
+from app.handlers.preview import parse_preview_date
+from app.handlers.schedule import handle_day, handle_today, handle_tomorrow
 from app.schedule import ScheduleError, lessons_on, load_lessons
 
 FAKE_TOKEN = "123456789:AAHfake-token-for-tests-only-000000000"
@@ -201,6 +202,118 @@ async def test_tomorrow_crosses_month_boundary(freeze_today: Callable[[date], No
     await handle_tomorrow(message)  # type: ignore[arg-type]
 
     assert "1 октября" in message.answers[0]
+
+
+# --------------------------------------------------------------------------------------
+# /day — любая дата
+# --------------------------------------------------------------------------------------
+
+
+def day_command(args: str | None = None) -> CommandObject:
+    return CommandObject(prefix="/", command="day", args=args)
+
+
+async def test_day_without_argument_shows_today(
+    freeze_today: Callable[[date], None],
+) -> None:
+    """Без даты /day — это то же, что /today: показываем сегодняшний день."""
+    freeze_today(WED_EVEN)
+    plain = FakeMessage(text="/today")
+    dated = FakeMessage(text="/day")
+
+    await handle_today(plain)  # type: ignore[arg-type]
+    await handle_day(dated, day_command())  # type: ignore[arg-type]
+
+    assert dated.answers == plain.answers
+
+
+async def test_day_shows_the_requested_date(
+    freeze_today: Callable[[date], None],
+) -> None:
+    """Стоим в среду числителя, спрашиваем вторник знаменателя — чётность своя у даты."""
+    freeze_today(WED_ODD)
+    message = FakeMessage(text="/day 2026-09-08")
+
+    await handle_day(message, day_command("2026-09-08"))  # type: ignore[arg-type]
+
+    answer = message.answers[0]
+    assert "Вторник" in answer
+    assert "8 сентября" in answer
+    assert "знаменатель" in answer
+    assert "Сегодня" not in answer and "Завтра" not in answer
+
+
+async def test_day_names_today_and_tomorrow_when_they_are_asked_by_date(
+    freeze_today: Callable[[date], None],
+) -> None:
+    freeze_today(WED_ODD)
+    today = FakeMessage()
+    tomorrow = FakeMessage()
+
+    await handle_day(today, day_command("2026-09-02"))  # type: ignore[arg-type]
+    await handle_day(tomorrow, day_command("2026-09-03"))  # type: ignore[arg-type]
+
+    assert "Сегодня, среда" in today.answers[0]
+    assert "Завтра, четверг" in tomorrow.answers[0]
+
+
+async def test_day_reports_an_empty_thursday(
+    freeze_today: Callable[[date], None],
+) -> None:
+    """Пустой день — норма: /day на 3 сентября отвечает «пар нет», а не молчит."""
+    freeze_today(TUE_ODD)
+    message = FakeMessage(text="/day 2026-09-03")
+
+    await handle_day(message, day_command("2026-09-03"))  # type: ignore[arg-type]
+
+    assert texts.NO_LESSONS in message.answers[0]
+    assert "Четверг, 3 сентября" in message.answers[0]
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        pytest.param("завтра", id="слово вместо даты"),
+        pytest.param("08.09.2026", id="точки вместо дефисов"),
+        pytest.param("2026-02-29", id="29 февраля в невисокосном году"),
+    ],
+)
+async def test_day_with_bad_date_explains_the_format(
+    freeze_today: Callable[[date], None], raw: str
+) -> None:
+    freeze_today(WED_ODD)
+    message = FakeMessage(text=f"/day {raw}")
+
+    await handle_day(message, day_command(raw))  # type: ignore[arg-type]
+
+    assert message.answers == [texts.DAY_BAD_DATE.format(value=raw)]
+
+
+async def test_day_and_preview_react_to_garbage_the_same_way(
+    freeze_today: Callable[[date], None],
+) -> None:
+    """Разбор даты общий, поэтому «непонятно» у обеих команд наступает на одном и том же."""
+    freeze_today(WED_ODD)
+    for raw in ("завтра", "08.09.2026", "2026-02-29", "2026-13-01"):
+        message = FakeMessage()
+
+        await handle_day(message, day_command(raw))  # type: ignore[arg-type]
+
+        assert message.answers == [texts.DAY_BAD_DATE.format(value=raw)], raw
+        assert parse_preview_date(raw, WED_ODD) is None, raw
+
+
+async def test_day_escapes_a_broken_argument(
+    freeze_today: Callable[[date], None],
+) -> None:
+    """Ответ уходит с parse_mode=HTML — «<b>» в аргументе не должно ломать сообщение."""
+    freeze_today(WED_ODD)
+    message = FakeMessage(text="/day <b>")
+
+    await handle_day(message, day_command("<b>"))  # type: ignore[arg-type]
+
+    assert "&lt;b&gt;" in message.answers[0]
+    assert "<b>" not in message.answers[0]
 
 
 # --------------------------------------------------------------------------------------

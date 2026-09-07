@@ -57,8 +57,15 @@ async def handle_week(message: Message, command: CommandObject) -> None:
         await message.answer(texts.WEEK_BAD_DATE.format(value=common.shown_arg(raw)))
         return
 
+    monday = monday_of(target)
+    if not week_in_range(monday, today):
+        # Кнопки такую неделю не показывают — саму команду нужно ограничить так же,
+        # иначе можно улететь на десятки лет вперёд и застрять там без кнопок обратно.
+        await message.answer(texts.WEEK_EDGE)
+        return
+
     try:
-        text, markup = render_week(monday_of(target), today)
+        text, markup = render_week(monday, today)
     except ScheduleError:
         logger.exception("Не удалось загрузить расписание для /week на %s", target)
         await message.answer(texts.SCHEDULE_ERROR)
