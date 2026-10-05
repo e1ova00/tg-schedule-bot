@@ -1,0 +1,243 @@
+/* ==========================================================================
+   Дизайн-токены: цвета (light / dark), отступы (8-point), радиусы, тени, движение
+   ========================================================================== */
+
+:root {
+  /* Типографика */
+  --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Inter', 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, sans-serif;
+  --fs-xs: 0.75rem;
+  --fs-sm: 0.8125rem;
+  --fs-base: 0.9375rem;
+  --fs-md: 1.0625rem;
+  --fs-lg: 1.25rem;
+  --fs-xl: 1.75rem;
+  --fs-2xl: 2.25rem;
+  --fs-3xl: 3rem;
+
+  /* 8-point spacing (4 — половинный шаг для мелочей) */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 20px;
+  --s-6: 24px;
+  --s-8: 32px;
+  --s-10: 40px;
+  --s-12: 48px;
+  --s-16: 64px;
+
+  /* Радиусы */
+  --r-xs: 8px;
+  --r-sm: 10px;
+  --r-md: 14px;
+  --r-lg: 20px;
+  --r-xl: 28px;
+  --r-pill: 999px;
+
+  /* Движение */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --dur-fast: 150ms;
+  --dur: 240ms;
+  --dur-slow: 480ms;
+
+  --sidebar-w: 248px;
+  --content-max: 1320px;
+
+  /* ---------- Светлая тема (по умолчанию) ---------- */
+  --bg: #f2f2f7;
+  --bg-gradient: radial-gradient(1200px 600px at 100% -10%, rgba(255, 107, 44, 0.06), transparent 60%),
+    radial-gradient(900px 500px at -10% 10%, rgba(10, 132, 255, 0.05), transparent 60%);
+  --surface: #ffffff;
+  --surface-2: #f6f6f9;
+  --surface-elevated: #ffffff;
+  --surface-translucent: rgba(255, 255, 255, 0.72);
+  --fill: rgba(118, 118, 128, 0.12);
+  --fill-strong: rgba(118, 118, 128, 0.2);
+  --text-primary: #1d1d1f;
+  --text-secondary: #6a6a70;
+  --text-tertiary: #8a8a8f;
+  --text-on-accent: #ffffff;
+  --separator: rgba(60, 60, 67, 0.12);
+  --focus: #0071e3;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04), 0 1px 1px rgba(0, 0, 0, 0.02);
+  --shadow-md: 0 1px 3px rgba(0, 0, 0, 0.04), 0 8px 24px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 2px 8px rgba(0, 0, 0, 0.06), 0 24px 64px rgba(0, 0, 0, 0.16);
+  --backdrop: rgba(0, 0, 0, 0.32);
+
+  /* Категории: базовый цвет (графика) и «ink» (текст, контраст ≥ 4.5:1) */
+  --c-training: #ff6b2c;
+  --c-training-2: #ff2d55;
+  --c-training-ink: #c2410c;
+  --c-progress: #0a84ff;
+  --c-progress-2: #5ac8fa;
+  --c-progress-ink: #0062cc;
+  --c-recovery: #13b5c8;
+  --c-recovery-2: #30d5c8;
+  --c-recovery-ink: #0b7285;
+  --c-mood: #8e5cf6;
+  --c-mood-2: #c86bfa;
+  --c-mood-alt: #c4a5ff;
+  --c-mood-ink: #6d28d9;
+  --c-nutrition: #30c060;
+  --c-nutrition-2: #a3e635;
+  --c-nutrition-ink: #1f7a3a;
+  --c-cycle: #ff4f8b;
+  --c-cycle-2: #ff8fb8;
+  --c-cycle-ink: #c2185b;
+  --c-supplements: #ffaa1f;
+  --c-supplements-2: #ffd60a;
+  --c-supplements-ink: #9a5800;
+  --c-library: #5e5ce6;
+  --c-library-2: #8b8aff;
+  --c-library-ink: #4341c4;
+  --c-water: #32ade6;
+  --c-water-ink: #0b6f9c;
+  --c-protein: #ff6482;
+  --c-fat: #ffb020;
+  --c-carbs: #5ac8fa;
+  --c-danger: #ff3b30;
+  --c-danger-ink: #d70015;
+  --c-success: #34c759;
+  --c-neutral: #8e8e93;
+  --c-neutral-ink: #55555b;
+
+  --phase-menstrual: #ff4f8b;
+  --phase-follicular: #5ac8fa;
+  --phase-ovulatory: #c86bfa;
+  --phase-luteal: #ffb020;
+
+  color-scheme: light;
+}
+
+/* ---------- Тёмная тема ---------- */
+:root[data-theme='dark'] {
+  --bg: #000000;
+  --bg-gradient: radial-gradient(1200px 600px at 100% -10%, rgba(255, 159, 10, 0.07), transparent 60%),
+    radial-gradient(900px 500px at -10% 10%, rgba(64, 156, 255, 0.06), transparent 60%);
+  --surface: #1c1c1e;
+  --surface-2: #242427;
+  --surface-elevated: #2c2c2e;
+  --surface-translucent: rgba(28, 28, 30, 0.72);
+  --fill: rgba(118, 118, 128, 0.24);
+  --fill-strong: rgba(118, 118, 128, 0.36);
+  --text-primary: #f5f5f7;
+  --text-secondary: #a1a1a6;
+  --text-tertiary: #7c7c80;
+  --text-on-accent: #ffffff;
+  --separator: rgba(255, 255, 255, 0.1);
+  --focus: #4da3ff;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 1px 2px rgba(0, 0, 0, 0.5), 0 8px 24px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 24px 64px rgba(0, 0, 0, 0.6);
+  --backdrop: rgba(0, 0, 0, 0.6);
+
+  --c-training: #ff9f0a;
+  --c-training-2: #ff375f;
+  --c-training-ink: #ffb340;
+  --c-progress: #409cff;
+  --c-progress-2: #64d2ff;
+  --c-progress-ink: #7ab8ff;
+  --c-recovery: #40d0e0;
+  --c-recovery-2: #63e6be;
+  --c-recovery-ink: #6fe0ec;
+  --c-mood: #bf8bff;
+  --c-mood-2: #e08bff;
+  --c-mood-alt: #7d5bc4;
+  --c-mood-ink: #d0abff;
+  --c-nutrition: #34d36b;
+  --c-nutrition-2: #c0f04a;
+  --c-nutrition-ink: #5fe08c;
+  --c-cycle: #ff6fa8;
+  --c-cycle-2: #ffa3c7;
+  --c-cycle-ink: #ff94bf;
+  --c-supplements: #ffc53d;
+  --c-supplements-2: #ffe066;
+  --c-supplements-ink: #ffd36e;
+  --c-library: #8b8aff;
+  --c-library-2: #b4b3ff;
+  --c-library-ink: #b0afff;
+  --c-water: #64d2ff;
+  --c-water-ink: #8adfff;
+  --c-protein: #ff7a93;
+  --c-fat: #ffc53d;
+  --c-carbs: #64d2ff;
+  --c-danger: #ff453a;
+  --c-danger-ink: #ff6961;
+  --c-neutral: #98989d;
+  --c-neutral-ink: #c7c7cc;
+
+  color-scheme: dark;
+}
+
+/* ---------- Акцентные классы: задают --accent* для потомков ---------- */
+.accent-training,
+.accent-activity {
+  --accent: var(--c-training);
+  --accent-2: var(--c-training-2);
+  --accent-ink: var(--c-training-ink);
+}
+.accent-progress {
+  --accent: var(--c-progress);
+  --accent-2: var(--c-progress-2);
+  --accent-ink: var(--c-progress-ink);
+}
+.accent-recovery,
+.accent-wellbeing {
+  --accent: var(--c-recovery);
+  --accent-2: var(--c-recovery-2);
+  --accent-ink: var(--c-recovery-ink);
+}
+.accent-mood {
+  --accent: var(--c-mood);
+  --accent-2: var(--c-mood-2);
+  --accent-ink: var(--c-mood-ink);
+}
+.accent-nutrition {
+  --accent: var(--c-nutrition);
+  --accent-2: var(--c-nutrition-2);
+  --accent-ink: var(--c-nutrition-ink);
+}
+.accent-cycle {
+  --accent: var(--c-cycle);
+  --accent-2: var(--c-cycle-2);
+  --accent-ink: var(--c-cycle-ink);
+}
+.accent-supplements {
+  --accent: var(--c-supplements);
+  --accent-2: var(--c-supplements-2);
+  --accent-ink: var(--c-supplements-ink);
+}
+.accent-library {
+  --accent: var(--c-library);
+  --accent-2: var(--c-library-2);
+  --accent-ink: var(--c-library-ink);
+}
+.accent-water {
+  --accent: var(--c-water);
+  --accent-2: var(--c-water);
+  --accent-ink: var(--c-water-ink);
+}
+.accent-protein {
+  --accent: var(--c-protein);
+  --accent-ink: var(--text-primary);
+}
+.accent-fat {
+  --accent: var(--c-fat);
+  --accent-ink: var(--text-primary);
+}
+.accent-carbs {
+  --accent: var(--c-carbs);
+  --accent-ink: var(--text-primary);
+}
+.accent-today {
+  --accent: var(--c-training-2);
+  --accent-2: var(--c-training);
+  --accent-ink: var(--c-training-ink);
+}
+.accent-neutral {
+  --accent: var(--c-neutral);
+  --accent-2: var(--c-neutral);
+  --accent-ink: var(--c-neutral-ink);
+}

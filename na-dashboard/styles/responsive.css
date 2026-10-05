@@ -1,0 +1,284 @@
+/* ==========================================================================
+   Адаптивность: desktop → tablet → mobile
+   ========================================================================== */
+
+/* Ноутбуки: Daily Insight и кольца — друг под другом */
+@media (max-width: 1240px) {
+  .section-top {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .rings-card {
+    padding: var(--s-5) var(--s-4);
+  }
+}
+
+/* Планшеты: узкая боковая панель-иконки, сетка из 2 колонок */
+@media (max-width: 1024px) {
+  :root {
+    --sidebar-w: 84px;
+  }
+
+  .sidebar {
+    align-items: center;
+    padding-inline: var(--s-3);
+  }
+
+  .brand__text,
+  .nav-link__text,
+  .sidebar__settings span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .nav-link {
+    justify-content: center;
+    padding: var(--s-2);
+  }
+
+  .sidebar__settings {
+    justify-content: center;
+    width: 44px;
+    padding: 0;
+  }
+
+  .theme-switch {
+    flex-direction: column;
+    border-radius: var(--r-lg);
+  }
+
+  .main {
+    padding: var(--s-6) var(--s-6) var(--s-10);
+  }
+
+  .dashboard-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--s-4);
+  }
+
+  .dashboard-grid > [data-size='small'],
+  .dashboard-grid > [data-size='medium'] {
+    grid-column: span 1;
+  }
+
+  .dashboard-grid > [data-size='large'] {
+    grid-column: span 2;
+  }
+
+  .insights-panel {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Телефоны: нижняя навигация, одна колонка */
+@media (max-width: 720px) {
+  .app {
+    display: block;
+  }
+
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--s-2) var(--s-4);
+    padding-top: max(var(--s-2), env(safe-area-inset-top));
+    background: var(--surface-translucent);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    border-bottom: 1px solid var(--separator);
+  }
+
+  .topbar .brand__mark {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    font-size: 0.75rem;
+  }
+
+  .sidebar {
+    position: fixed;
+    inset: auto 0 0 0;
+    top: auto;
+    height: auto;
+    flex-direction: row;
+    padding: var(--s-1) var(--s-2);
+    padding-bottom: max(var(--s-1), env(safe-area-inset-bottom));
+    border-right: 0;
+    border-top: 1px solid var(--separator);
+    gap: 0;
+  }
+
+  .brand--sidebar,
+  .sidebar__footer {
+    display: none;
+  }
+
+  .nav-list {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    width: 100%;
+    gap: 0;
+  }
+
+  .nav-link {
+    flex-direction: column;
+    gap: 2px;
+    min-height: 56px;
+    padding: var(--s-1) 2px;
+    border-radius: var(--r-md);
+    font-size: 0.6875rem;
+  }
+
+  .nav-link__text {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip: auto;
+    max-width: 100%;
+    text-overflow: ellipsis;
+    overflow: hidden;
+  }
+
+  .nav-link__icon {
+    width: 28px;
+    height: 28px;
+  }
+
+  .nav-link[aria-current='page'] {
+    background: transparent;
+    box-shadow: none;
+    color: var(--accent-ink);
+  }
+
+  .main {
+    padding: var(--s-5) var(--s-4) calc(96px + env(safe-area-inset-bottom));
+  }
+
+  .section {
+    gap: var(--s-4);
+  }
+
+  .section-header__title {
+    font-size: var(--fs-xl);
+  }
+
+  .section-header .btn {
+    width: 100%;
+  }
+
+  .dashboard-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dashboard-grid > [data-size] {
+    grid-column: 1 / -1;
+  }
+
+  .widget {
+    border-radius: var(--r-lg);
+  }
+
+  .widget__header {
+    padding: var(--s-3) var(--s-3) var(--s-3) var(--s-4);
+    gap: var(--s-2);
+  }
+
+  .widget__body {
+    padding: 0 var(--s-4) var(--s-4);
+  }
+
+  /* На тач-экранах нет hover — кнопки управления видны всегда, перетаскивание заменяют ↑ ↓ */
+  .widget__controls {
+    opacity: 1;
+  }
+
+  .widget__grip {
+    display: none;
+  }
+
+  .insight-card {
+    padding: var(--s-6) var(--s-5);
+  }
+
+  .insight-card__greeting {
+    font-size: var(--fs-2xl);
+  }
+
+  .insight-line:first-child {
+    font-size: var(--fs-md);
+  }
+
+  .rings .ring-wrap {
+    transform: scale(0.86);
+    margin-bottom: 0;
+  }
+
+  .insights-panel {
+    padding: var(--s-5);
+  }
+
+  .macros {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .set-form {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .set-form .btn {
+    grid-column: 1 / -1;
+  }
+
+  .form-grid--3 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .choice-group__grid.cols-3 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .onboarding {
+    padding: var(--s-3);
+  }
+
+  .onboarding__panel {
+    padding: var(--s-6) var(--s-5);
+    margin: var(--s-2) auto;
+  }
+
+  .onboarding__title,
+  .onboarding__panel[data-step='0'] .onboarding__title {
+    font-size: var(--fs-xl);
+  }
+
+  .modal__panel {
+    padding: var(--s-5);
+  }
+
+  .toast-region {
+    bottom: calc(80px + env(safe-area-inset-bottom));
+  }
+
+  .score-hero {
+    flex-direction: column;
+    text-align: center;
+  }
+}
+
+@media (max-width: 380px) {
+  .widget__controls [data-control='resize'] {
+    display: none;
+  }
+
+  .form-grid--2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
