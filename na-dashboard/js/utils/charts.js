@@ -20,6 +20,16 @@ function withAlpha(color, alpha) {
   return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
 }
 
+/** Вертикальный градиент сверху вниз: from alpha → to alpha. */
+function verticalGradient(chart, color, fromAlpha, toAlpha = 0) {
+  const { ctx, chartArea } = chart;
+  if (!chartArea) return withAlpha(color, fromAlpha);
+  const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+  gradient.addColorStop(0, withAlpha(color, fromAlpha));
+  gradient.addColorStop(1, withAlpha(color, toAlpha));
+  return gradient;
+}
+
 function baseOptions({ yLabel, suggestedMin, suggestedMax, stepSize } = {}) {
   const text = cssVar('--text-secondary');
   const grid = cssVar('--separator');
@@ -79,30 +89,30 @@ export function createLineChart(canvas, { labels, datasets, yLabel, suggestedMin
   if (!isChartAvailable()) return null;
   const options = baseOptions({ yLabel, suggestedMin, suggestedMax, stepSize });
   options.plugins.legend.display = legend;
-  const ctx = canvas.getContext('2d');
-  return new window.Chart(ctx, {
+  const multi = datasets.length > 1;
+  return new window.Chart(canvas.getContext('2d'), {
     type: 'line',
     data: {
       labels,
-      datasets: datasets.map(({ label, data, accent, dashed }) => {
+      datasets: datasets.map(({ label, data, accent, dashed }, i) => {
         const color = accentColor(accent);
-        const height = canvas.parentElement?.clientHeight || 200;
-        const gradient = ctx.createLinearGradient(0, 0, 0, height);
-        gradient.addColorStop(0, withAlpha(color, datasets.length > 1 ? 0.08 : 0.22));
-        gradient.addColorStop(1, withAlpha(color, 0));
         return {
           label,
           data,
           borderColor: color,
-          backgroundColor: gradient,
-          fill: true,
-          tension: 0.35,
-          borderWidth: 2.5,
-          borderDash: dashed ? [6, 4] : undefined,
-          pointRadius: data.length > 30 ? 0 : 3,
-          pointHoverRadius: 5,
+          // Градиент считается по реальной области графика (chartArea), а не по высоте canvas.
+          backgroundColor: (context) => verticalGradient(context.chart, color, multi && i > 0 ? 0 : multi ? 0.2 : 0.38),
+          fill: !(multi && i > 0),
+          tension: 0.4,
+          borderWidth: 3,
+          borderCapStyle: 'round',
+          borderDash: dashed ? [6, 5] : undefined,
+          pointRadius: data.length > 30 ? 0 : 3.5,
+          pointHoverRadius: 6,
           pointBackgroundColor: color,
-          pointBorderWidth: 0,
+          pointBorderColor: cssVar('--surface') || '#fff',
+          pointBorderWidth: 2,
+          pointHoverBorderWidth: 3,
           spanGaps: true,
         };
       }),
@@ -119,7 +129,17 @@ export function createBarChart(canvas, { labels, data, accent, label, yLabel, su
     type: 'bar',
     data: {
       labels,
-      datasets: [{ label, data, backgroundColor: withAlpha(color, 0.85), hoverBackgroundColor: color, borderRadius: 6, borderSkipped: false, maxBarThickness: 22 }],
+      datasets: [
+        {
+          label,
+          data,
+          backgroundColor: (context) => verticalGradient(context.chart, color, 1, 0.35),
+          hoverBackgroundColor: color,
+          borderRadius: 8,
+          borderSkipped: false,
+          maxBarThickness: 22,
+        },
+      ],
     },
     options: baseOptions({ yLabel, suggestedMin: 0, suggestedMax, stepSize }),
   });

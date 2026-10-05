@@ -133,6 +133,7 @@ export class ActivityRings extends UIComponent {
   renderBody(body) {
     body.setAttribute('aria-label', 'Кольца прогресса');
     body.append(
+      el('p', { class: 'rings-card__title', attrs: { 'aria-hidden': 'true' } }, el('strong', { text: 'Кольца дня' })),
       el(
         'ul',
         { class: 'rings' },
@@ -143,8 +144,8 @@ export class ActivityRings extends UIComponent {
             ring({
               ratio: r.ratio,
               accent: r.key,
-              size: 108,
-              stroke: 13,
+              size: 124,
+              stroke: 15,
               label: el('span', { class: 'ring-label' }, el('span', { class: 'ring-label__value', text: r.value })),
             }),
             el('p', { class: 'rings__label', text: r.label }),

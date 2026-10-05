@@ -1,0 +1,554 @@
+/* ==========================================================================
+   Premium-слой: глубина, стекло, градиенты, свечение (Apple Fitness × Health)
+   Подключается после widgets.css и переопределяет «плоские» поверхности.
+   Логика и разметка не меняются — только визуальный язык.
+   ========================================================================== */
+
+:root {
+  --glass: rgba(255, 255, 255, 0.7);
+  --glass-strong: rgba(255, 255, 255, 0.86);
+  --glass-border: rgba(255, 255, 255, 0.75);
+  --glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  --elev-1: 0 1px 1px rgba(17, 12, 34, 0.03), 0 2px 4px rgba(17, 12, 34, 0.03), 0 8px 16px rgba(17, 12, 34, 0.04),
+    0 24px 48px -12px rgba(17, 12, 34, 0.1);
+  --elev-2: 0 1px 1px rgba(17, 12, 34, 0.03), 0 4px 8px rgba(17, 12, 34, 0.04), 0 16px 32px rgba(17, 12, 34, 0.07),
+    0 40px 80px -20px rgba(17, 12, 34, 0.18);
+  --mesh-1: rgba(255, 128, 64, 0.22);
+  --mesh-2: rgba(175, 82, 222, 0.16);
+  --mesh-3: rgba(48, 200, 220, 0.16);
+  --mesh-4: rgba(255, 55, 135, 0.1);
+  /* Глубокий градиент «обложки» — белый текст на нём контрастен (≥ 4.5:1 в основной зоне текста) */
+  --hero-gradient: linear-gradient(135deg, #c2410c 0%, #be123c 48%, #6d28d9 100%);
+  --hero-glow: radial-gradient(420px 260px at 92% 8%, rgba(255, 170, 90, 0.55), transparent 70%),
+    radial-gradient(380px 240px at 70% 120%, rgba(150, 90, 255, 0.45), transparent 70%);
+}
+
+:root[data-theme='dark'] {
+  --glass: rgba(28, 28, 32, 0.58);
+  --glass-strong: rgba(36, 36, 40, 0.82);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  --elev-1: 0 1px 1px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.35), 0 24px 48px -12px rgba(0, 0, 0, 0.5);
+  --elev-2: 0 1px 1px rgba(0, 0, 0, 0.4), 0 16px 40px rgba(0, 0, 0, 0.45), 0 40px 80px -20px rgba(0, 0, 0, 0.7);
+  --mesh-1: rgba(255, 120, 40, 0.2);
+  --mesh-2: rgba(160, 80, 255, 0.2);
+  --mesh-3: rgba(30, 200, 220, 0.14);
+  --mesh-4: rgba(255, 45, 120, 0.12);
+}
+
+/* ---------- Фон: мягкий mesh-градиент ---------- */
+body {
+  background-image: none;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: -10vmax;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(42vmax 34vmax at 88% 4%, var(--mesh-1), transparent 70%),
+    radial-gradient(38vmax 36vmax at 4% 36%, var(--mesh-2), transparent 70%),
+    radial-gradient(40vmax 30vmax at 78% 96%, var(--mesh-3), transparent 70%),
+    radial-gradient(30vmax 26vmax at 30% 104%, var(--mesh-4), transparent 70%);
+  filter: saturate(120%);
+}
+
+/* ---------- Стеклянные поверхности ---------- */
+.sidebar,
+.topbar {
+  background: var(--glass);
+  backdrop-filter: saturate(190%) blur(28px);
+  -webkit-backdrop-filter: saturate(190%) blur(28px);
+}
+
+.widget,
+.insights-panel,
+.dashboard-empty {
+  position: relative;
+  isolation: isolate;
+  background: var(--glass);
+  backdrop-filter: saturate(180%) blur(24px);
+  -webkit-backdrop-filter: saturate(180%) blur(24px);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-highlight), var(--elev-1);
+}
+
+/* Цветной «отсвет» категории в шапке карточки */
+.widget::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: radial-gradient(120% 180px at 0% 0%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 70%),
+    radial-gradient(80% 160px at 100% 0%, color-mix(in srgb, var(--accent-2, var(--accent)) 9%, transparent), transparent 70%);
+  pointer-events: none;
+}
+
+@media (hover: hover) {
+  .widget:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--glass-highlight), var(--elev-2);
+  }
+}
+
+.widget.is-dragging {
+  transform: scale(0.97) rotate(-0.6deg);
+}
+
+/* Каскадное появление карточек */
+.dashboard-grid > .widget:nth-child(2) { animation-delay: 50ms; }
+.dashboard-grid > .widget:nth-child(3) { animation-delay: 100ms; }
+.dashboard-grid > .widget:nth-child(4) { animation-delay: 150ms; }
+.dashboard-grid > .widget:nth-child(5) { animation-delay: 200ms; }
+.dashboard-grid > .widget:nth-child(n + 6) { animation-delay: 250ms; }
+
+.widget {
+  animation-fill-mode: backwards;
+}
+
+.widget__icon,
+.catalog__icon,
+.welcome__icon {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 6px 14px -4px color-mix(in srgb, var(--accent) 70%, transparent);
+}
+
+.widget__title {
+  font-size: 1.125rem;
+}
+
+/* Внутренние «подложки» — чуть прозрачнее, чтобы читалась глубина */
+.stat,
+.exercise-card,
+.disclosure,
+.water,
+.empty-state,
+.state-message,
+.insight-list__item,
+.window-card,
+.chart-fallback,
+.catalog__item,
+.profile-list {
+  background: color-mix(in srgb, var(--surface-2) 72%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--separator) 60%, transparent);
+}
+
+.stat {
+  background: linear-gradient(160deg, color-mix(in srgb, var(--accent, var(--c-neutral)) 10%, transparent), transparent 70%),
+    color-mix(in srgb, var(--surface-2) 72%, transparent);
+}
+
+/* ---------- Крупные числа: градиентная заливка ---------- */
+.stat__value > span:first-child,
+.big-number,
+.ring-label__value,
+.window-card__value,
+.adherence__value,
+.timer {
+  background: linear-gradient(135deg, var(--accent-ink, var(--text-primary)) 30%, color-mix(in srgb, var(--accent-ink, var(--text-primary)) 55%, var(--accent, var(--text-primary))));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.kcal-hero {
+  --accent: var(--c-nutrition);
+  --accent-ink: var(--c-nutrition-ink);
+}
+
+.cycle-hero {
+  --accent: var(--c-cycle);
+  --accent-ink: var(--c-cycle-ink);
+}
+
+.adherence {
+  --accent-ink: var(--c-supplements-ink);
+}
+
+.window-card {
+  --accent: var(--c-training);
+  --accent-ink: var(--c-training-ink);
+}
+
+.big-number {
+  font-size: 2.75rem;
+  letter-spacing: -0.035em;
+}
+
+.section-header__title {
+  font-size: 2.5rem;
+  letter-spacing: -0.035em;
+}
+
+/* ---------- Кнопки ---------- */
+.btn {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+.btn--secondary,
+.icon-btn:not(.icon-btn--ghost):not(.icon-btn--tinted) {
+  background: color-mix(in srgb, var(--glass-strong) 70%, var(--fill));
+  box-shadow: inset 0 0 0 1px var(--separator), 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.widget__controls .icon-btn {
+  box-shadow: none;
+  background: transparent;
+}
+
+.widget .btn--primary,
+.insight-card .btn--primary {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 8px 20px -6px color-mix(in srgb, var(--accent, var(--c-progress)) 75%, transparent);
+}
+
+@media (hover: hover) {
+  .btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+  }
+
+  .widget .btn--primary:hover:not(:disabled) {
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 12px 28px -8px color-mix(in srgb, var(--accent, var(--c-progress)) 85%, transparent);
+  }
+}
+
+.btn:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+/* Сегменты — «стеклянный» переключатель */
+.segmented {
+  background: color-mix(in srgb, var(--fill) 80%, transparent);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+.segmented__btn[aria-pressed='true'] {
+  background: var(--glass-strong);
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.04), 0 3px 8px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+/* Поля */
+.input {
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+}
+
+/* ---------- Прогресс и кольца: свечение ---------- */
+.progress__track {
+  height: 10px;
+  background: color-mix(in srgb, var(--accent) 14%, var(--fill));
+}
+
+.progress__fill {
+  box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 55%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+.ring__value {
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--accent) 55%, transparent));
+}
+
+.check:checked {
+  box-shadow: 0 4px 10px -2px color-mix(in srgb, var(--accent, var(--c-success)) 70%, transparent);
+}
+
+.scale__input:checked + .scale__label,
+.chip--toggle[aria-pressed='true'] {
+  background: linear-gradient(135deg, var(--accent, var(--c-progress)), var(--accent-2, var(--accent, var(--c-progress))));
+  box-shadow: 0 6px 14px -4px color-mix(in srgb, var(--accent, var(--c-progress)) 70%, transparent);
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.15);
+}
+
+/* ---------- Daily Insight — «обложка» как в Apple Fitness ---------- */
+.insight-card {
+  --text-secondary: rgba(255, 255, 255, 0.82);
+  color: #fff;
+  background: var(--hero-gradient);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 30px 60px -20px rgba(190, 18, 60, 0.55), var(--elev-1);
+}
+
+.insight-card::before {
+  background: var(--hero-glow);
+  animation: hero-drift 14s ease-in-out infinite alternate;
+}
+
+.insight-card::after {
+  /* тонкая «зернистость» света */
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.1), transparent 40%);
+  pointer-events: none;
+}
+
+@keyframes hero-drift {
+  to {
+    transform: translate(-4%, 4%) scale(1.06);
+  }
+}
+
+.insight-card .eyebrow {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.insight-card__greeting {
+  color: #fff;
+  text-shadow: 0 2px 20px rgba(0, 0, 0, 0.12);
+}
+
+.insight-card .insight-card__lead,
+.insight-card .insight-card__disclaimer,
+.insight-card .muted {
+  color: rgba(255, 255, 255, 0.86);
+}
+
+.insight-line__icon {
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  backdrop-filter: blur(8px);
+}
+
+.insight-card .btn--primary {
+  --btn-bg: #fff;
+  --btn-fg: #9f1239;
+  background: #fff;
+  text-shadow: none;
+  box-shadow: 0 10px 24px -8px rgba(0, 0, 0, 0.35);
+}
+
+.insight-card .btn--secondary,
+.insight-card .btn--ghost {
+  --btn-fg: #fff;
+  background: rgba(255, 255, 255, 0.18);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25);
+  color: #fff;
+}
+
+.insight-card :focus-visible {
+  outline-color: #fff;
+}
+
+/* ---------- Кольца — тёмная «витрина», как Activity в Apple Watch ---------- */
+.rings-card {
+  --c-training-ink: #ffb340;
+  --c-recovery-ink: #6fe0ec;
+  --c-nutrition-ink: #5fe08c;
+  --c-training: #ff9f0a;
+  --c-training-2: #ff375f;
+  --c-recovery: #40d0e0;
+  --c-recovery-2: #63e6be;
+  --c-nutrition: #34d36b;
+  --c-nutrition-2: #c0f04a;
+  --text-secondary: rgba(255, 255, 255, 0.66);
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  color: #fff;
+  background: radial-gradient(260px 160px at 20% 0%, rgba(255, 90, 60, 0.22), transparent 70%),
+    radial-gradient(260px 180px at 90% 100%, rgba(60, 220, 200, 0.18), transparent 70%), #0b0b10;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 30px 60px -24px rgba(0, 0, 0, 0.6), var(--elev-1);
+  color-scheme: dark;
+}
+
+.rings-card .ring__track {
+  stroke: color-mix(in srgb, var(--accent) 22%, #000);
+}
+
+.rings-card .ring__value {
+  filter: drop-shadow(0 0 8px color-mix(in srgb, var(--accent) 70%, transparent));
+}
+
+.rings-card .ring-label__value {
+  background: none;
+  color: #fff;
+}
+
+.rings-card {
+  grid-template-rows: auto 1fr;
+  align-content: stretch;
+  gap: var(--s-5);
+}
+
+.rings-card .rings {
+  align-self: center;
+}
+
+.rings-card__title {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--s-2);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.rings-card__title strong {
+  font-size: var(--fs-md);
+  color: #fff;
+  letter-spacing: -0.01em;
+}
+
+.rings-card .ring-label__value {
+  font-size: 1.5rem;
+}
+
+/* Кольца сжимаются вместе с колонкой (на узких экранах) */
+.rings .ring-wrap {
+  width: 100% !important;
+  max-width: 124px;
+  height: auto !important;
+  aspect-ratio: 1;
+  transform: none !important;
+}
+
+.rings .ring {
+  width: 100%;
+  height: 100%;
+}
+
+.window-card {
+  align-self: start;
+}
+
+/* ---------- Окно тренировки ---------- */
+.window-card.is-ok {
+  --accent-ink: #fff;
+  color: #fff;
+  background: var(--hero-gradient);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 20px 40px -18px rgba(190, 18, 60, 0.55);
+}
+
+.window-card.is-ok .eyebrow,
+.window-card.is-ok .muted {
+  color: rgba(255, 255, 255, 0.86);
+}
+
+.window-card.is-ok .window-card__value {
+  background: none;
+  color: #fff;
+}
+
+/* ---------- Отдельные элементы виджетов ---------- */
+.active-head {
+  color: #fff;
+  background: linear-gradient(135deg, #c2410c, #be123c);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 14px 30px -14px rgba(190, 18, 60, 0.6);
+}
+
+.active-head .muted {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.active-head .timer {
+  background: none;
+  color: #fff;
+}
+
+.live-dot {
+  background: #fff;
+}
+
+.mood__orb {
+  margin: var(--s-5) 0 var(--s-3);
+  box-shadow: 0 0 0 10px color-mix(in srgb, var(--orb-a) 12%, transparent), 0 0 0 22px color-mix(in srgb, var(--orb-a) 6%, transparent),
+    0 18px 40px color-mix(in srgb, var(--orb-a) 55%, transparent), inset 0 -8px 20px rgba(0, 0, 0, 0.12),
+    inset 0 8px 16px rgba(255, 255, 255, 0.35);
+  animation: breathe 5s ease-in-out infinite;
+}
+
+@keyframes breathe {
+  50% {
+    filter: brightness(1.06) saturate(1.1);
+    box-shadow: 0 0 0 14px color-mix(in srgb, var(--orb-a) 10%, transparent), 0 0 0 30px color-mix(in srgb, var(--orb-a) 4%, transparent),
+      0 22px 48px color-mix(in srgb, var(--orb-a) 60%, transparent), inset 0 -8px 20px rgba(0, 0, 0, 0.12),
+      inset 0 8px 16px rgba(255, 255, 255, 0.35);
+  }
+}
+
+.cycle-track__seg {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+.cycle-track__marker {
+  box-shadow: 0 0 0 3px var(--surface), 0 4px 10px rgba(0, 0, 0, 0.25);
+}
+
+.badge--training {
+  background: linear-gradient(135deg, var(--c-training), var(--c-training-2));
+  color: #fff;
+}
+
+/* Навигация */
+.nav-link[aria-current='page'] {
+  background: var(--glass-strong);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 1px 2px rgba(0, 0, 0, 0.04), 0 8px 20px -8px rgba(0, 0, 0, 0.18);
+}
+
+.nav-link[aria-current='page'] .nav-link__icon {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 6px 14px -4px color-mix(in srgb, var(--accent) 75%, transparent);
+}
+
+.brand__mark {
+  background: var(--hero-gradient);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 8px 20px -6px rgba(190, 18, 60, 0.6);
+}
+
+/* Модальные окна и onboarding */
+.modal {
+  background: var(--glass-strong);
+  backdrop-filter: saturate(180%) blur(32px);
+  -webkit-backdrop-filter: saturate(180%) blur(32px);
+  border: 1px solid var(--glass-border);
+}
+
+.onboarding {
+  background-image: radial-gradient(900px 600px at 90% -5%, var(--mesh-1), transparent 65%),
+    radial-gradient(800px 600px at -5% 60%, var(--mesh-2), transparent 65%),
+    radial-gradient(700px 500px at 80% 110%, var(--mesh-3), transparent 65%);
+}
+
+.onboarding__panel {
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-highlight), var(--elev-2);
+}
+
+.onboarding__panel[data-step='0'] .onboarding__title {
+  background: var(--hero-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.onboarding .btn--primary {
+  background: var(--hero-gradient);
+  color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 10px 24px -8px rgba(190, 18, 60, 0.6);
+}
+
+.dot.is-done,
+.dot.is-current {
+  background: var(--hero-gradient);
+}
+
+.choice__input:checked + .choice__label {
+  box-shadow: inset 0 0 0 2px #be123c, 0 8px 20px -10px rgba(190, 18, 60, 0.5);
+}
+
+/* Тосты */
+.toast {
+  background: var(--glass-strong);
+  border: 1px solid var(--glass-border);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .insight-card::before,
+  .mood__orb {
+    animation: none;
+  }
+
+  .widget:hover {
+    transform: none;
+  }
+}

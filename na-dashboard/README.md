@@ -111,7 +111,8 @@ na-dashboard/
 │   └── utils/                 calculations.js (формулы), date.js, dom.js (безопасный DOM),
 │                              format.js, icons.js (SVG), charts.js (обёртка Chart.js), demoData.js
 └── styles/                    variables.css (токены, темы), base.css, layout.css,
-                               components.css, widgets.css, responsive.css
+                               components.css, widgets.css, premium.css (стекло, градиенты,
+                               свечение), responsive.css
 ```
 
 ## 6. Используемые API
