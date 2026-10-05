@@ -1,7 +1,7 @@
 /**
  * Чистые функции расчётов. Не трогают DOM и хранилище — легко проверить отдельно.
  */
-import { addDays, daysBetween, isoWeekday, parseISODate, timeToMinutes, today } from './date.js';
+import { addDays, daysBetween, isoWeekday, timeToMinutes, today } from './date.js';
 
 export const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
 
@@ -293,8 +293,3 @@ export function scalePer100(per100, grams) {
   const r = (v) => (Number.isFinite(v) ? Math.round(v * k * 10) / 10 : null);
   return { kcal: r(per100.kcal), protein: r(per100.protein), fat: r(per100.fat), carbs: r(per100.carbs) };
 }
-
-/** Возраст записи в неделях (для подписи трендов). */
-export const weeksBetween = (a, b) => Math.max(1, Math.round(daysBetween(a, b) / 7));
-
-export const dateDiffDays = (a, b) => (parseISODate(b) - parseISODate(a)) / 86400000;

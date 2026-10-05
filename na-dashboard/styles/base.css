@@ -210,3 +210,9 @@ main:focus-visible {
     scroll-behavior: auto !important;
   }
 }
+
+/* Заголовки получают фокус программно (смена раздела/шага) — кольцо там не нужно,
+   у интерактивных элементов фокус остаётся видимым. */
+[tabindex='-1']:focus-visible {
+  outline: none;
+}

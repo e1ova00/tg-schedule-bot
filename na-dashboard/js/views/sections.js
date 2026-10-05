@@ -47,6 +47,7 @@ export const SECTIONS = Object.freeze([
     key: 'wellbeing',
     title: 'Самочувствие',
     nav: 'Самочувствие',
+    short: 'Состояние',
     icon: 'smile',
     subtitle: 'Сон, восстановление, настроение и биоритмы.',
     defaultLayout: [

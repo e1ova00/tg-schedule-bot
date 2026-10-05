@@ -89,7 +89,7 @@ function buildNav() {
       el(
         'li',
         {},
-        el('a', { class: ['nav-link', `accent-${s.key}`], href: `#/${s.key}`, dataset: { route: s.key } }, el('span', { class: 'nav-link__icon', attrs: { 'aria-hidden': 'true' } }, icon(s.icon, { size: 20 })), el('span', { class: 'nav-link__text', text: s.nav })),
+        el('a', { class: ['nav-link', `accent-${s.key}`], href: `#/${s.key}`, dataset: { route: s.key } }, el('span', { class: 'nav-link__icon', attrs: { 'aria-hidden': 'true' } }, icon(s.icon, { size: 20 })), el('span', { class: 'nav-link__text', text: s.nav }), s.short ? el('span', { class: 'nav-link__short', text: s.short, attrs: { 'aria-hidden': 'true' } }) : null),
       ),
     ),
   );

@@ -152,6 +152,19 @@
     height: 28px;
   }
 
+  /* Короткая подпись вместо длинной (полная остаётся для скринридеров) */
+  .nav-link:has(.nav-link__short) .nav-link__text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+
+  .nav-link__short {
+    display: block;
+  }
+
   .nav-link[aria-current='page'] {
     background: transparent;
     box-shadow: none;

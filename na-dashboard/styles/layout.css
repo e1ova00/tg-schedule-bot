@@ -87,6 +87,10 @@
   transition: background-color var(--dur) var(--ease-out), color var(--dur) var(--ease-out);
 }
 
+.nav-link__short {
+  display: none;
+}
+
 .nav-link:hover {
   background: var(--fill);
 }

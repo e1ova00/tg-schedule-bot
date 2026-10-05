@@ -135,7 +135,6 @@ export class UIComponent {
   }
 
   /** Абстрактный метод: заполнить тело компонента. */
-  // eslint-disable-next-line no-unused-vars
   renderBody(body) {
     throw new Error(`${this.constructor.name} должен реализовать renderBody()`);
   }
@@ -278,13 +277,9 @@ export class UIComponent {
   }
 
   /** Обработчики для наследников (полиморфизм через переопределение). */
-  // eslint-disable-next-line no-unused-vars
   onAction(action, target, event) {}
-  // eslint-disable-next-line no-unused-vars
   onSubmit(name, form, event) {}
-  // eslint-disable-next-line no-unused-vars
   onInput(name, target, event) {}
-  // eslint-disable-next-line no-unused-vars
   onChange(name, target, event) {}
 
   /** Запрос к «хозяину» (Dashboard) — всплывающее событие, без прямой ссылки на него. */
